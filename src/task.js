@@ -126,7 +126,7 @@ function taskAudienceText(ids) {
   const names = (ids || [])
     .map((id) => (typeof packById === "function" ? packById(id) : null))
     .filter(Boolean)
-    .map((pack) => pack.name);
+    .map((pack) => (pack.enabled ? pack.name : `${pack.name}（已停用）`));
   return names.length ? names.join("、") : "未限定人群";
 }
 
@@ -461,25 +461,30 @@ function renderTaskPrizePicker() {
 function renderTaskPackPicker() {
   if (!taskState.packPicker || !taskState.modal || !taskState.modal.form) return "";
   const selected = new Set(taskState.modal.form.audience || []);
-  const packs = (typeof segmentState !== "undefined" && segmentState.packs) || [];
+  const packs =
+    typeof packsAvailableToPick === "function"
+      ? packsAvailableToPick([...selected])
+      : ((typeof segmentState !== "undefined" && segmentState.packs) || []);
   return `
     <div class="mask">
       <div class="dialog">
         <div class="dialog-title">选择人群</div>
         <div class="dialog-body">
-          <p class="filter-hint">选项来自用户圈选中的人群包。</p>
+          <p class="filter-hint">选项来自用户圈选中<strong>已启用</strong>的人群包。已停用但本任务已引用的包仍会列出，可取消；新任务不能再勾选已停用包。</p>
           ${
             packs.length
               ? packs
-                  .map(
-                    (pack) => `
-            <label class="tag-option">
-              <input type="checkbox" data-task-act="toggle-pack" data-id="${pack.id}" ${selected.has(pack.id) ? "checked" : ""} />
-              <span>${escapeHtml(pack.name)}</span>
-            </label>`,
-                  )
+                  .map((pack) => {
+                    const checked = selected.has(pack.id);
+                    const locked = !pack.enabled && !checked;
+                    return `
+            <label class="tag-option${locked ? " is-locked" : ""}">
+              <input type="checkbox" data-task-act="toggle-pack" data-id="${pack.id}" ${checked ? "checked" : ""} ${locked ? "disabled" : ""} />
+              <span>${escapeHtml(pack.name)}${pack.enabled ? "" : "（已停用）"}</span>
+            </label>`;
+                  })
                   .join("")
-              : '<div class="empty-inline">还没有人群包，请先去用户圈选新建</div>'
+              : '<div class="empty-inline">没有可引用的启用人群包，请先去用户圈选新建或启用</div>'
           }
         </div>
         <div class="dialog-foot">
@@ -651,6 +656,12 @@ function onTaskOverlayClick(e) {
     const form = taskState.modal && taskState.modal.form;
     if (!form) return;
     const set = new Set(form.audience || []);
+    const pack = typeof packById === "function" ? packById(btn.dataset.id) : null;
+    if (btn.checked && pack && !pack.enabled) {
+      showToast("已停用的人群包不能被新业务引用", "error");
+      btn.checked = false;
+      return;
+    }
     if (btn.checked) set.add(btn.dataset.id);
     else set.delete(btn.dataset.id);
     form.audience = [...set];

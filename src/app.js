@@ -167,6 +167,15 @@ const MENUS = [
   },
 ];
 
+const READY_MENU_KEYS = new Set([
+  "user-info",
+  "user-tag-library",
+  "user-tag-segment",
+  "task",
+  "coin-sku",
+  "coin-point-adjust",
+  "virtual-asset-log",
+]);
 const openKeys = new Set();
 let activeKey = "data-overview";
 let openTabs = ["data-overview"];
@@ -230,6 +239,12 @@ function hasActiveDescendant(item) {
   return item.children.some((child) => hasActiveDescendant(child));
 }
 
+function hasReadyDescendant(item) {
+  if (READY_MENU_KEYS.has(item.key)) return true;
+  if (!item.children) return false;
+  return item.children.some((child) => hasReadyDescendant(child));
+}
+
 function renderItems(items, level) {
   return items
     .map((item) => {
@@ -243,6 +258,7 @@ function renderItems(items, level) {
         active ? "active" : "",
         activeBranch ? "active-parent" : "",
         hasChildren && opened ? "open" : "",
+        hasReadyDescendant(item) ? "ready" : "",
       ]
         .filter(Boolean)
         .join(" ");

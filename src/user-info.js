@@ -39,7 +39,7 @@ const userState = {
       official: false,
       member: false,
       memberPack: "",
-      tags: ["free_old"],
+      tags: ["free", "old"],
       gender: "",
       like: "",
       dislike: "",

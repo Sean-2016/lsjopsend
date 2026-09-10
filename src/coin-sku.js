@@ -312,7 +312,7 @@ function renderCoinDrawer() {
   const packNames = (form.packs || [])
     .map((id) => packById(id))
     .filter(Boolean)
-    .map((pack) => pack.name);
+    .map((pack) => (pack.enabled ? pack.name : `${pack.name}（已停用）`));
   return `
     <div class="mask drawer-mask">
       <aside class="drawer coin-drawer">
@@ -441,24 +441,26 @@ function renderValueModal() {
 function renderCoinPackPicker() {
   if (!coinState.packPicker || !coinState.drawer) return "";
   const selected = new Set(coinState.drawer.form.packs || []);
-  const options = (segmentState.packs || [])
-    .map(
-      (pack) => `
-        <label class="tag-option">
-          <input type="checkbox" data-coin-act="toggle-pack" data-id="${pack.id}" ${selected.has(pack.id) ? "checked" : ""} />
-          <span>${escapeHtml(pack.name)}</span>
-          <span class="tag-bubble">${escapeHtml(pack.desc || "")}（${pack.enabled ? "已启用" : "已停用"}）</span>
+  const options = (typeof packsAvailableToPick === "function" ? packsAvailableToPick([...selected]) : segmentState.packs || [])
+    .map((pack) => {
+      const checked = selected.has(pack.id);
+      const locked = !pack.enabled && !checked;
+      return `
+        <label class="tag-option${locked ? " is-locked" : ""}">
+          <input type="checkbox" data-coin-act="toggle-pack" data-id="${pack.id}" ${checked ? "checked" : ""} ${locked ? "disabled" : ""} />
+          <span>${escapeHtml(pack.name)}${pack.enabled ? "" : "（已停用）"}</span>
+          <span class="tag-bubble">${escapeHtml(pack.desc || "")}${pack.enabled ? "" : "。已引用业务可继续使用，新业务不能再勾选。"}</span>
         </label>
-      `,
-    )
+      `;
+    })
     .join("");
   return `
     <div class="mask">
       <div class="dialog">
         <div class="dialog-title">选择用户群</div>
         <div class="dialog-body">
-          <p class="filter-hint">选项来自用户圈选中的人群包。</p>
-          <div class="add-list" style="display:block;max-height:360px">${options || '<div class="empty-inline">还没有人群包，请先去用户圈选新建</div>'}</div>
+          <p class="filter-hint">选项来自用户圈选中<strong>已启用</strong>的人群包。已停用但当前商品已引用的包仍会列出，可取消引用，不能再被其它新业务勾选。</p>
+          <div class="add-list" style="display:block;max-height:360px">${options || '<div class="empty-inline">没有可引用的启用人群包，请先去用户圈选新建或启用</div>'}</div>
         </div>
         <div class="dialog-foot">
           <button type="button" class="btn btn-primary" data-coin-act="close-packs">完成</button>
@@ -640,6 +642,12 @@ function onCoinOverlayClick(e) {
     const form = coinState.drawer && coinState.drawer.form;
     if (!form) return;
     const set = new Set(form.packs || []);
+    const pack = typeof packById === "function" ? packById(btn.dataset.id) : null;
+    if (btn.checked && pack && !pack.enabled) {
+      showToast("已停用的人群包不能被新业务引用", "error");
+      btn.checked = false;
+      return;
+    }
     if (btn.checked) set.add(btn.dataset.id);
     else set.delete(btn.dataset.id);
     form.packs = [...set];

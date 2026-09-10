@@ -658,6 +658,7 @@ function renderAudiencePage() {
             <span class="enable-text">${pack.enabled ? "已启用" : "未启用"}</span>
           </label>
         </div>
+        <p class="filter-hint" style="margin:0 0 12px">停用后：已经引用该包的业务可继续使用；新的业务（金币包、任务等再去勾选时）不能再引用已停用的人群包。</p>
         <section class="form-sec">
           <h4>1. 包信息</h4>
           <div class="form-grid">

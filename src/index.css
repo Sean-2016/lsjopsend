@@ -131,8 +131,31 @@ body {
   background: #e6f4ff;
 }
 
+.nav-item.ready,
+.nav-sub.ready {
+  background: #ffccc7;
+  color: #cf1322;
+}
+
+.nav-item.ready:hover,
+.nav-sub.ready:hover {
+  background: #ffa39e;
+  color: #a8071a;
+}
+
+.nav-item.ready.active,
+.nav-sub.ready.active {
+  background: #ff7875;
+  color: #820014;
+}
+
 .nav-item.active-parent {
   color: var(--primary);
+}
+
+.nav-item.ready.active-parent,
+.nav-sub.ready.active-parent {
+  color: #cf1322;
 }
 
 .nav-item .icon {

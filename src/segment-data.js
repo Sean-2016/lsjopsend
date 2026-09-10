@@ -12,32 +12,44 @@ function createInitialTags() {
       status: "enabled",
       system: true,
       params: { duration: 24, unit: "hour" },
-      description: "注册成功起未满 24 小时，且从未成功充值（账本成功入账，不含 pending、不含赠币）。",
-      updatedAt: "09-08 18:00",
+      description: "注册成功起未满 24 小时（窗口可在标签中调整）。与「老用户」互斥，不包含付费/免费判定。",
+      updatedAt: "09-10 18:00",
       updatedBy: "产品阿陈",
     },
     {
-      id: "free_old",
-      name: "免费老用户",
-      code: "free_old",
+      id: "old",
+      name: "老用户",
+      code: "old",
       category: "fsm",
       status: "enabled",
       system: true,
       params: {},
-      description: "从未成功充值，且已过新用户窗口。",
-      updatedAt: "09-08 18:00",
+      description: "已过新用户窗口。与「新用户」互斥，不包含付费/免费判定。",
+      updatedAt: "09-10 18:00",
       updatedBy: "产品阿陈",
     },
     {
       id: "paid",
-      name: "已充值用户",
+      name: "付费用户",
       code: "paid",
       category: "fsm",
       status: "enabled",
       system: true,
       params: {},
-      description: "至少 1 笔充值成功入账，且当前不是回归用户。",
-      updatedAt: "09-08 18:00",
+      description: "至少 1 笔充值成功入账（不含 pending、不含赠币）。与「免费用户」互斥。",
+      updatedAt: "09-10 18:00",
+      updatedBy: "产品阿陈",
+    },
+    {
+      id: "free",
+      name: "免费用户",
+      code: "free",
+      category: "fsm",
+      status: "enabled",
+      system: true,
+      params: {},
+      description: "从未成功充值（账本成功入账）。与「付费用户」互斥。",
+      updatedAt: "09-10 18:00",
       updatedBy: "产品阿陈",
     },
     {
@@ -48,8 +60,44 @@ function createInitialTags() {
       status: "enabled",
       system: true,
       params: { silentDays: 30 },
-      description: "曾成功充值，连续 30 天无登录且无充值后再次打开。",
-      updatedAt: "09-08 18:00",
+      description: "连续 30 天无登录且无充值后再次打开。不与新/老、付费/免费互斥，可与其它标签组合。",
+      updatedAt: "09-10 18:00",
+      updatedBy: "产品阿陈",
+    },
+    {
+      id: "sub_active",
+      name: "订阅中",
+      code: "sub_active",
+      category: "sub",
+      status: "enabled",
+      system: true,
+      params: {},
+      description: "订阅在有效期中。与「订阅失效」互斥。",
+      updatedAt: "09-10 18:00",
+      updatedBy: "产品阿陈",
+    },
+    {
+      id: "sub_expired",
+      name: "订阅失效",
+      code: "sub_expired",
+      category: "sub",
+      status: "enabled",
+      system: true,
+      params: {},
+      description: "曾经订阅过，但当前已过期。与「订阅中」互斥。",
+      updatedAt: "09-10 18:00",
+      updatedBy: "产品阿陈",
+    },
+    {
+      id: "sub_renewed",
+      name: "有续订",
+      code: "sub_renewed",
+      category: "sub",
+      status: "enabled",
+      system: true,
+      params: {},
+      description: "任意续订过一次。不与「订阅中 / 订阅失效」互斥。",
+      updatedAt: "09-10 18:00",
       updatedBy: "产品阿陈",
     },
     {
@@ -124,7 +172,7 @@ function createInitialPacks() {
       desc: "未付费、仍有转化空间的用户，可供活动或触达自行绑定。",
       enabled: true,
       includeMode: "or",
-      includes: ["free_old", "returning"],
+      includes: ["free", "old", "returning"],
       excludes: [],
       countries: [],
       amountRange: {},
@@ -211,7 +259,7 @@ function filterCountries(query) {
 }
 
 function isRechargeTag(tag) {
-  return Boolean(tag && (tag.code === "paid" || /充值/.test(tag.name)));
+  return Boolean(tag && (tag.code === "paid" || tag.name === "付费用户"));
 }
 
 function isReturningTag(tag) {
@@ -220,22 +268,25 @@ function isReturningTag(tag) {
 
 function tagMutexGroup(tag) {
   if (!tag) return "";
-  if (
-    ["new", "free_old", "paid", "returning"].includes(tag.code) ||
-    /免费|充值|新用户|回归/.test(tag.name)
-  ) {
-    return "lifecycle";
-  }
+  if (tag.code === "new" || tag.code === "old") return "age";
+  if (tag.code === "paid" || tag.code === "free") return "pay";
+  if (tag.code === "sub_active" || tag.code === "sub_expired") return "sub";
   return "";
 }
 
+function packsAvailableToPick(selectedIds) {
+  const selected = new Set(selectedIds || []);
+  const packs = typeof segmentState !== "undefined" ? segmentState.packs || [] : [];
+  return packs.filter((pack) => pack.enabled || selected.has(pack.id));
+}
+
 const SAMPLE_UIDS = [
-  { uid: "u_18****02", hit: "免费老用户", exclude: "" },
+  { uid: "u_18****02", hit: "免费用户", exclude: "" },
   { uid: "u_33****71", hit: "回归用户", exclude: "" },
-  { uid: "u_09****44", hit: "免费老用户", exclude: "" },
+  { uid: "u_09****44", hit: "老用户", exclude: "" },
   { uid: "u_61****08", hit: "回归用户", exclude: "" },
-  { uid: "u_22****93", hit: "免费老用户", exclude: "" },
+  { uid: "u_22****93", hit: "免费用户", exclude: "" },
   { uid: "u_47****15", hit: "回归用户", exclude: "" },
-  { uid: "u_12****66", hit: "免费老用户", exclude: "" },
+  { uid: "u_12****66", hit: "老用户", exclude: "" },
   { uid: "u_88****21", hit: "回归用户", exclude: "" },
 ];

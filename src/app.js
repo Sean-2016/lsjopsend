@@ -30,6 +30,8 @@ const MENUS = [
       { key: "member-lifecycle", label: "会员生命周期概览" },
       { key: "member-level-overview", label: "会员等级概览" },
       { key: "asset-dashboard", label: "资产数据看板" },
+      { key: "search-effect", label: "搜索效果看板" },
+      { key: "l1-consume-board", label: "一级类目消费看板" },
     ],
   },
   {
@@ -44,6 +46,7 @@ const MENUS = [
       { key: "content-pool", label: "内容池管理" },
       { key: "tag-group", label: "内容标签组管理" },
       { key: "tag", label: "内容标签管理" },
+      { key: "upload-url", label: "上传文件获得地址" },
     ],
   },
   {
@@ -87,7 +90,6 @@ const MENUS = [
       { key: "activity", label: "活动管理" },
       { key: "task", label: "任务管理" },
       { key: "prize-pool", label: "奖品池管理" },
-      { key: "rank", label: "榜单管理" },
       { key: "ad-channel", label: "广告渠道管理" },
       { key: "search-words", label: "搜索组件推荐搜索词" },
       { key: "faq", label: "FAQ管理" },
@@ -129,6 +131,8 @@ const MENUS = [
       { key: "version", label: "版本管理" },
       { key: "version-guide", label: "版本更新引导" },
       { key: "feature-page", label: "功能页面管理" },
+      { key: "rank", label: "榜单管理" },
+      { key: "content-category", label: "内容分类管理" },
       { key: "tabbar", label: "底部导航管理" },
       { key: "badge", label: "角标物料管理" },
       { key: "seo", label: "seo参数管理" },
@@ -167,7 +171,7 @@ const MENUS = [
   },
 ];
 
-const READY_MENU_KEYS = new Set([
+const READY_MENU_KEYS_V1 = new Set([
   "user-info",
   "user-tag-library",
   "user-tag-segment",
@@ -175,6 +179,15 @@ const READY_MENU_KEYS = new Set([
   "coin-sku",
   "coin-point-adjust",
   "virtual-asset-log",
+]);
+const READY_MENU_KEYS_V2 = new Set([
+  "video",
+  "rank",
+  "content-category",
+  "feature-page",
+  "upload-url",
+  "search-effect",
+  "l1-consume-board",
 ]);
 const openKeys = new Set();
 let activeKey = "data-overview";
@@ -239,10 +252,21 @@ function hasActiveDescendant(item) {
   return item.children.some((child) => hasActiveDescendant(child));
 }
 
-function hasReadyDescendant(item) {
-  if (READY_MENU_KEYS.has(item.key)) return true;
-  if (!item.children) return false;
-  return item.children.some((child) => hasReadyDescendant(child));
+function menuReadyBatch(item) {
+  if (READY_MENU_KEYS_V2.has(item.key)) return "v2";
+  if (READY_MENU_KEYS_V1.has(item.key)) return "v1";
+  if (!item.children) return "";
+  let v1 = false;
+  let v2 = false;
+  item.children.forEach((child) => {
+    const batch = menuReadyBatch(child);
+    if (batch === "v1" || batch === "both") v1 = true;
+    if (batch === "v2" || batch === "both") v2 = true;
+  });
+  if (v1 && v2) return "both";
+  if (v2) return "v2";
+  if (v1) return "v1";
+  return "";
 }
 
 function renderItems(items, level) {
@@ -252,13 +276,15 @@ function renderItems(items, level) {
       const opened = openKeys.has(item.key);
       const active = item.key === activeKey;
       const activeBranch = hasChildren && hasActiveDescendant(item);
+      const readyBatch = menuReadyBatch(item);
       const className = [
         level === 1 ? "nav-item" : "nav-sub",
         `level-${level}`,
         active ? "active" : "",
         activeBranch ? "active-parent" : "",
         hasChildren && opened ? "open" : "",
-        hasReadyDescendant(item) ? "ready" : "",
+        readyBatch === "v1" || readyBatch === "both" ? "ready-v1" : "",
+        readyBatch === "v2" || readyBatch === "both" ? "ready-v2" : "",
       ]
         .filter(Boolean)
         .join(" ");
@@ -369,6 +395,57 @@ function renderWorkTabs() {
   });
 }
 
+function renderL1ConsumePage() {
+  return `
+    <header class="topbar">
+      <div class="crumb">
+        <span>数据中心</span>
+        <span class="sep">/</span>
+        <span class="current">一级类目消费看板</span>
+      </div>
+      <div class="topbar-right">
+        <span class="env-chip">测试</span>
+        <span class="user-chip">运营小王</span>
+      </div>
+    </header>
+    <iframe class="board-frame" src="./src/l1-consume.html" title="一级类目消费看板"></iframe>
+  `;
+}
+
+function renderSearchEffectPage() {
+  return `
+    <header class="topbar">
+      <div class="crumb">
+        <span>数据中心</span>
+        <span class="sep">/</span>
+        <span class="current">搜索效果看板</span>
+      </div>
+      <div class="topbar-right">
+        <span class="env-chip">测试</span>
+        <span class="user-chip">运营小王</span>
+      </div>
+    </header>
+    <iframe class="board-frame" src="./src/search-effect.html" title="搜索效果看板"></iframe>
+  `;
+}
+
+function renderEmptyBoardPage(label) {
+  return `
+    <header class="topbar">
+      <div class="crumb">
+        <span>数据中心</span>
+        <span class="sep">/</span>
+        <span class="current">${label}</span>
+      </div>
+      <div class="topbar-right">
+        <span class="env-chip">测试</span>
+        <span class="user-chip">运营小王</span>
+      </div>
+    </header>
+    <div class="page board-empty"></div>
+  `;
+}
+
 function renderPlaceholderPage(key) {
   const page = pageByKey(key);
   const crumbs = page.crumbs
@@ -419,6 +496,26 @@ function renderApp() {
     mountFinanceLogPage(main);
   } else if (activeKey === "task") {
     mountTaskPage(main);
+  } else if (activeKey === "video") {
+    mountVideoPage(main);
+  } else if (activeKey === "rank") {
+    mountRankPage(main);
+  } else if (activeKey === "content-category") {
+    mountCategoryPage(main);
+  } else if (activeKey === "feature-page") {
+    mountFeaturePage(main);
+  } else if (activeKey === "upload-url") {
+    mountUploadUrlPage(main);
+  } else if (activeKey === "search-effect") {
+    const overlay = document.getElementById("overlay-root");
+    if (overlay) overlay.innerHTML = "";
+    document.documentElement.classList.remove("overlay-open");
+    main.innerHTML = renderSearchEffectPage();
+  } else if (activeKey === "l1-consume-board") {
+    const overlay = document.getElementById("overlay-root");
+    if (overlay) overlay.innerHTML = "";
+    document.documentElement.classList.remove("overlay-open");
+    main.innerHTML = renderL1ConsumePage();
   } else {
     main.innerHTML = renderPlaceholderPage(activeKey);
     const overlay = document.getElementById("overlay-root");

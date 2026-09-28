@@ -53,7 +53,11 @@ function isSegmentDirty() {
       (segmentState.drawer && segmentState.drawer.dirty) ||
       (typeof isCoinDirty === "function" && isCoinDirty()) ||
       (typeof isUserDirty === "function" && isUserDirty()) ||
-      (typeof isTaskDirty === "function" && isTaskDirty()),
+      (typeof isTaskDirty === "function" && isTaskDirty()) ||
+      (typeof isVideoDirty === "function" && isVideoDirty()) ||
+      (typeof isRankDirty === "function" && isRankDirty()) ||
+      (typeof isCategoryDirty === "function" && isCategoryDirty()) ||
+      (typeof isFeaturePageDirty === "function" && isFeaturePageDirty()),
   );
 }
 
@@ -86,6 +90,19 @@ function confirmLeaveIfDirty(next) {
         taskState.modal = null;
         taskState.prizePicker = false;
         taskState.packPicker = false;
+      }
+      if (typeof videoState !== "undefined") {
+        videoState.drawer = null;
+        videoState.feeModal = null;
+      }
+      if (typeof rankState !== "undefined") rankState.modal = null;
+      if (typeof categoryState !== "undefined") {
+        categoryState.modal = null;
+        categoryState.batchModal = false;
+      }
+      if (typeof featurePageState !== "undefined") {
+        featurePageState.editor = null;
+        featurePageState.view = "list";
       }
       next();
     },

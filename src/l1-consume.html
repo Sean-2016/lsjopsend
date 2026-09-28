@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一级类目消费看板</title>
+<style>
+:root {
+  --blue: #1a73e8; --green: #34a853; --red: #ea4335; --orange: #f29900;
+  --purple: #7b61ff; --gray: #9aa0a6; --text: #202124; --text-2: #5f6368;
+  --bg: #f5f6fa; --card: #fff; --line: #e8eaed; --hover: #fafafa;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); padding: 24px; color: var(--text); }
+.header { background: var(--blue); color: #fff; padding: 16px 24px; border-radius: 8px; margin-bottom: 20px; font-size: 18px; font-weight: 600; }
+.header span { font-size: 13px; font-weight: 400; opacity: .85; margin-left: 12px; }
+.content { display: flex; flex-direction: column; gap: 16px; }
+.page-title { font-size: 20px; font-weight: 600; }
+.page-desc { font-size: 13px; color: var(--text-2); margin-top: 4px; }
+.info-bar { background: #e8f0fe; color: #174ea6; border-radius: 8px; padding: 10px 16px; font-size: 12.5px; line-height: 1.6; }
+.filter-bar { background: var(--card); border-radius: 8px; padding: 12px 16px; display: flex; gap: 12px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,.08); flex-wrap: wrap; }
+.filter-label { font-size: 12px; color: var(--text-2); font-weight: 500; }
+.filter-select, .filter-date { padding: 6px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 13px; background: #fff; cursor: pointer; font-family: inherit; }
+.kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+.kpi-card { background: var(--card); border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); min-height: 92px; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+.kpi-label { font-size: 12px; color: var(--text-2); }
+.kpi-value { font-size: 22px; font-weight: 700; }
+.kpi-unit { font-size: 12px; font-weight: 400; color: var(--gray); }
+.kpi-note { font-size: 10.5px; color: var(--gray); }
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.chart-card, .table-card, .def-box { background: var(--card); border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); min-width: 0; }
+.chart-title, .table-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.chart-subtitle, .table-note { font-size: 11.5px; color: var(--gray); margin-bottom: 10px; }
+.chart-svg { width: 100%; height: auto; display: block; }
+.chart-legend { display: flex; gap: 14px; font-size: 11.5px; color: var(--text-2); margin-top: 8px; flex-wrap: wrap; }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.funnel { display: flex; flex-direction: column; gap: 8px; }
+.funnel-row { display: grid; grid-template-columns: 72px 1fr 88px; gap: 8px; align-items: center; font-size: 12px; }
+.funnel-bar { height: 22px; background: #f1f3f4; border-radius: 4px; overflow: hidden; }
+.funnel-bar span { display: block; height: 100%; border-radius: 4px; }
+.table-scroll { overflow: auto; max-height: 480px; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th { text-align: left; padding: 8px 10px; background: #f8f9fa; color: var(--text-2); font-weight: 500; border-bottom: 1px solid var(--line); white-space: nowrap; position: sticky; top: 0; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td { padding: 8px 10px; border-bottom: 1px solid #f1f3f4; white-space: nowrap; }
+tbody tr:hover { background: var(--hover); }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; background: #f1f3f4; color: var(--text-2); }
+.def-box { font-size: 12.5px; color: var(--text-2); line-height: 1.9; }
+.def-box b { color: var(--text); }
+.empty { text-align: center; color: var(--gray); padding: 28px 0; font-size: 13px; }
+@media (max-width: 1100px) {
+  .kpi-grid, .chart-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+<header class="header">一级类目消费看板 <span>T+1 · 当天数据不可查</span></header>
+<div class="content">
+  <div>
+    <h1 class="page-title">一级类目消费</h1>
+    <div class="page-desc">按视频一级类目看推荐曝光 / 点击、播放与赞藏转。粒度：统计日 × 业务 × 一级类目。</div>
+  </div>
+  <div class="info-bar">数据为 T+1，当天不可查。2026-09-23 四条为 Doris 导出（video 曝光 19 / UV 2，Tycoon 曝光 1，通用与视频为 0）。其余日期为演示序列；口径来自数仓表头。</div>
+  <div class="filter-bar">
+    <select class="filter-select" id="range-preset">
+      <option value="yesterday">昨天</option>
+      <option value="7" selected>近7天</option>
+      <option value="15">近15天</option>
+      <option value="30">近30天</option>
+      <option value="-">-</option>
+    </select>
+    <span class="filter-label">开始时间</span>
+    <input class="filter-date" id="range-start" type="date" />
+    <span class="filter-label">结束时间</span>
+    <input class="filter-date" id="range-end" type="date" />
+    <span class="filter-label" style="color:#9aa0a6">不含当天</span>
+    <span class="filter-label">一级类目</span>
+    <select class="filter-select" id="cat-filter"><option value="">全部类目</option></select>
+    <span class="filter-label">业务</span>
+    <select class="filter-select" id="app-filter"><option value="SZ-002">SZ-002</option></select>
+  </div>
+  <div class="kpi-grid" id="kpi-grid"></div>
+  <div class="chart-grid">
+    <section class="chart-card">
+      <div class="chart-title">推荐消费漏斗</div>
+      <div class="chart-subtitle">曝光 PV → 点击 PV → 播放 PV → 点赞 PV · 转化率相对上一层</div>
+      <div class="funnel" id="funnel"></div>
+    </section>
+    <section class="chart-card">
+      <div class="chart-title">类目曝光对比</div>
+      <div class="chart-subtitle">筛选期内各一级类目推荐曝光 PV</div>
+      <div id="cat-bars"></div>
+    </section>
+  </div>
+  <section class="chart-card">
+    <div class="chart-title">曝光 / 点击 / 播放趋势</div>
+    <div class="chart-subtitle">按日汇总 · 左轴次数</div>
+    <div id="trend"></div>
+    <div class="chart-legend">
+      <span><span class="legend-dot" style="background:#1a73e8"></span>曝光 PV</span>
+      <span><span class="legend-dot" style="background:#f29900"></span>点击 PV</span>
+      <span><span class="legend-dot" style="background:#34a853"></span>播放 PV</span>
+    </div>
+  </section>
+  <section class="table-card">
+    <div class="table-title">类目日明细</div>
+    <div class="table-note">日期倒序 · 同日按曝光 PV 倒序 · 人均时长 / 人均个数在播放 UV=0 时为空</div>
+    <div class="table-scroll" id="table-wrap"></div>
+  </section>
+  <section class="def-box">
+    <b>字段口径</b>（来自数仓导出表头）<br>
+    · <b>曝光 PV / UV</b>：recommend_list_view 次数；UV 访客键 = COALESCE(uid, device_id)。<br>
+    · <b>点击 PV / UV</b>：recommend_list_click。<br>
+    · <b>有播放内容数</b>：当日 video_play 去重视频数。<br>
+    · <b>播放 PV / UV / 时长</b>：video_play 次数、去重访客、play_dur_sec 总和。<br>
+    · <b>人均播放时长</b> = play_dur_sec / play_uv；<b>人均观看个数</b> = play_pv / play_uv；play_uv=0 为空。<br>
+    · <b>点赞 / 收藏</b>：flag=1 的有效互动 PV/UV；<b>分享</b>：video_share。<br>
+    · 本页 CTR = 点击 PV ÷ 曝光 PV，看板内计算，非数仓原字段。
+  </section>
+</div>
+<script>
+var CATS = [
+  { id: "6aaba8c786461a3155341d9d", name: "通用", w: 0.04 },
+  { id: "6aaba81b86461a3155341d9a", name: "视频", w: 0.06 },
+  { id: "6aad11b758e7713cc4b7cfd3", name: "Tycoon", w: 0.18 },
+  { id: "6aab68cb58a4ec13ab566d6a", name: "video", w: 0.72 }
+];
+var REAL = {
+  "2026-09-23|6aaba8c786461a3155341d9d": { exposure_pv: 0, exposure_uv: 0, click_pv: 0, click_uv: 0, play_item_cnt: 0, play_pv: 0, play_uv: 0, play_dur_sec: 0, like_pv: 0, like_uv: 0, collect_pv: 0, collect_uv: 0, share_pv: 0, share_uv: 0 },
+  "2026-09-23|6aaba81b86461a3155341d9a": { exposure_pv: 0, exposure_uv: 0, click_pv: 0, click_uv: 0, play_item_cnt: 0, play_pv: 0, play_uv: 0, play_dur_sec: 0, like_pv: 0, like_uv: 0, collect_pv: 0, collect_uv: 0, share_pv: 0, share_uv: 0 },
+  "2026-09-23|6aad11b758e7713cc4b7cfd3": { exposure_pv: 1, exposure_uv: 1, click_pv: 0, click_uv: 0, play_item_cnt: 0, play_pv: 0, play_uv: 0, play_dur_sec: 0, like_pv: 0, like_uv: 0, collect_pv: 0, collect_uv: 0, share_pv: 0, share_uv: 0 },
+  "2026-09-23|6aab68cb58a4ec13ab566d6a": { exposure_pv: 19, exposure_uv: 2, click_pv: 0, click_uv: 0, play_item_cnt: 0, play_pv: 0, play_uv: 0, play_dur_sec: 0, like_pv: 0, like_uv: 0, collect_pv: 0, collect_uv: 0, share_pv: 0, share_uv: 0 }
+};
+
+function pad2(n) { return n < 10 ? "0" + n : String(n); }
+function formatDay(date) { return date.getFullYear() + "-" + pad2(date.getMonth() + 1) + "-" + pad2(date.getDate()); }
+function startOfToday() { var d = new Date(); d.setHours(0, 0, 0, 0); return d; }
+function latestReadyDay() { return addDays(startOfToday(), -1); }
+function addDays(date, days) { var d = new Date(date.getTime()); d.setDate(d.getDate() + days); return d; }
+function parseDay(value) {
+  if (!value) return null;
+  var p = value.split("-");
+  var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+function rangeForPreset(preset) {
+  var end = latestReadyDay();
+  if (preset === "yesterday") return { start: end, end: end };
+  if (preset === "7") return { start: addDays(end, -6), end: end };
+  if (preset === "15") return { start: addDays(end, -14), end: end };
+  if (preset === "30") return { start: addDays(end, -29), end: end };
+  return null;
+}
+function presetForRange(startStr, endStr) {
+  var last = latestReadyDay();
+  var lastStr = formatDay(last);
+  if (startStr === lastStr && endStr === lastStr) return "yesterday";
+  if (endStr === lastStr && startStr === formatDay(addDays(last, -6))) return "7";
+  if (endStr === lastStr && startStr === formatDay(addDays(last, -14))) return "15";
+  if (endStr === lastStr && startStr === formatDay(addDays(last, -29))) return "30";
+  return "-";
+}
+function clampDateInput(el) {
+  var max = formatDay(latestReadyDay());
+  el.setAttribute("max", max);
+  if (!el.value || el.value > max) el.value = max;
+}
+
+function hash(str) {
+  var h = 0;
+  for (var i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h;
+}
+function rnd(key, min, max) {
+  var x = Math.sin(hash(key)) * 10000;
+  var f = x - Math.floor(x);
+  return min + f * (max - min);
+}
+
+function deriveAvgs(row) {
+  row.avg_play_dur_per_uv = row.play_uv ? Math.round(row.play_dur_sec / row.play_uv) : null;
+  row.avg_play_cnt_per_uv = row.play_uv ? +(row.play_pv / row.play_uv).toFixed(2) : null;
+  return row;
+}
+
+function synthRow(dt, cat) {
+  var key = dt + "|" + cat.id;
+  if (REAL[key]) {
+    return Object.assign({ dt: dt, app_id: "SZ-002", category_l1_id: cat.id, category_l1_name: cat.name, ingest_time: "2026-09-24 10:13:52" }, deriveAvgs(Object.assign({}, REAL[key])));
+  }
+  var day = parseDay(dt);
+  var weekday = day.getDay();
+  var weekend = weekday === 0 || weekday === 6 ? 1.18 : 1;
+  var exp = Math.round(rnd(key + "e", 40, 220) * cat.w * 4 * weekend);
+  if (cat.w < 0.1) exp = Math.round(rnd(key + "e0", 0, 8));
+  var expUv = exp ? Math.max(1, Math.round(exp / rnd(key + "eu", 4, 9))) : 0;
+  var click = Math.round(exp * rnd(key + "c", 0.06, 0.14));
+  var clickUv = click ? Math.max(1, Math.round(click / rnd(key + "cu", 1.2, 2.2))) : 0;
+  var play = Math.round(click * rnd(key + "p", 0.55, 0.85));
+  var playUv = play ? Math.max(1, Math.round(play / rnd(key + "pu", 1.3, 2.4))) : 0;
+  var items = play ? Math.max(1, Math.round(play / rnd(key + "i", 2.2, 5))) : 0;
+  var dur = playUv ? Math.round(playUv * rnd(key + "d", 80, 260)) : 0;
+  var like = Math.round(play * rnd(key + "l", 0.02, 0.08));
+  var collect = Math.round(play * rnd(key + "k", 0.01, 0.04));
+  var share = Math.round(play * rnd(key + "s", 0.005, 0.02));
+  return deriveAvgs({
+    dt: dt, app_id: "SZ-002", category_l1_id: cat.id, category_l1_name: cat.name,
+    exposure_pv: exp, exposure_uv: expUv, click_pv: click, click_uv: clickUv,
+    play_item_cnt: items, play_pv: play, play_uv: playUv, play_dur_sec: dur,
+    like_pv: like, like_uv: like ? Math.max(1, Math.round(like * 0.85)) : 0,
+    collect_pv: collect, collect_uv: collect ? Math.max(1, Math.round(collect * 0.9)) : 0,
+    share_pv: share, share_uv: share ? Math.max(1, Math.round(share * 0.95)) : 0,
+    ingest_time: dt + " 02:10:00"
+  });
+}
+
+var ALL_ROWS = (function () {
+  var rows = [];
+  var end = parseDay("2026-09-23");
+  var start = addDays(end, -29);
+  for (var d = new Date(start.getTime()); d <= end; d = addDays(d, 1)) {
+    var dt = formatDay(d);
+    CATS.forEach(function (cat) { rows.push(synthRow(dt, cat)); });
+  }
+  return rows;
+})();
+
+function fmtNum(n) {
+  if (n === null || n === undefined || n === "") return "—";
+  return Number(n).toLocaleString("en-US");
+}
+function fmtPct(n) {
+  if (!isFinite(n)) return "—";
+  return (n * 100).toFixed(1) + "%";
+}
+function fmtDur(sec) {
+  if (sec === null || sec === undefined) return "—";
+  var s = Math.round(sec);
+  if (s < 60) return s + "s";
+  var m = Math.floor(s / 60);
+  var r = s % 60;
+  return m + "m" + (r ? r + "s" : "");
+}
+
+function filteredRows() {
+  var start = document.getElementById("range-start").value;
+  var end = document.getElementById("range-end").value;
+  var cat = document.getElementById("cat-filter").value;
+  return ALL_ROWS.filter(function (row) {
+    if (start && row.dt < start) return false;
+    if (end && row.dt > end) return false;
+    if (cat && row.category_l1_id !== cat) return false;
+    return true;
+  });
+}
+
+function sumRows(rows) {
+  var s = { exposure_pv: 0, exposure_uv: 0, click_pv: 0, click_uv: 0, play_item_cnt: 0, play_pv: 0, play_uv: 0, play_dur_sec: 0, like_pv: 0, like_uv: 0, collect_pv: 0, collect_uv: 0, share_pv: 0, share_uv: 0 };
+  rows.forEach(function (r) {
+    Object.keys(s).forEach(function (k) { s[k] += Number(r[k] || 0); });
+  });
+  return deriveAvgs(s);
+}
+
+function renderKpi(rows) {
+  var s = sumRows(rows);
+  var ctr = s.exposure_pv ? s.click_pv / s.exposure_pv : NaN;
+  var interact = s.like_pv + s.collect_pv + s.share_pv;
+  var html = [
+    ["推荐曝光", fmtNum(s.exposure_pv), "PV", "UV " + fmtNum(s.exposure_uv)],
+    ["推荐点击", fmtNum(s.click_pv), "PV", "CTR " + fmtPct(ctr) + " · UV " + fmtNum(s.click_uv)],
+    ["播放", fmtNum(s.play_pv), "PV", "UV " + fmtNum(s.play_uv) + " · 内容数 " + fmtNum(s.play_item_cnt)],
+    ["人均播放时长", s.avg_play_dur_per_uv === null ? "—" : fmtDur(s.avg_play_dur_per_uv), "", "人均个数 " + (s.avg_play_cnt_per_uv === null ? "—" : s.avg_play_cnt_per_uv)],
+    ["互动 PV", fmtNum(interact), "", "赞 " + fmtNum(s.like_pv) + " · 藏 " + fmtNum(s.collect_pv) + " · 转 " + fmtNum(s.share_pv)]
+  ].map(function (item) {
+    return '<div class="kpi-card"><div class="kpi-label">' + item[0] + '</div><div class="kpi-value">' + item[1] + (item[2] ? '<span class="kpi-unit"> ' + item[2] + '</span>' : "") + '</div><div class="kpi-note">' + item[3] + "</div></div>";
+  }).join("");
+  document.getElementById("kpi-grid").innerHTML = html;
+}
+
+function renderFunnel(rows) {
+  var s = sumRows(rows);
+  var steps = [
+    { name: "曝光", v: s.exposure_pv, color: "#1a73e8" },
+    { name: "点击", v: s.click_pv, color: "#f29900" },
+    { name: "播放", v: s.play_pv, color: "#34a853" },
+    { name: "点赞", v: s.like_pv, color: "#ea4335" }
+  ];
+  var max = Math.max.apply(null, steps.map(function (x) { return x.v; })) || 1;
+  document.getElementById("funnel").innerHTML = steps.map(function (step, i) {
+    var prev = i ? steps[i - 1].v : step.v;
+    var rate = prev ? fmtPct(step.v / prev) : "—";
+    var w = Math.max(2, (step.v / max) * 100);
+    return '<div class="funnel-row"><div>' + step.name + '</div><div class="funnel-bar"><span style="width:' + w + "%;background:" + step.color + '"></span></div><div class="num">' + fmtNum(step.v) + (i ? " · " + rate : "") + "</div></div>";
+  }).join("");
+}
+
+function renderCatBars(rows) {
+  var by = {};
+  rows.forEach(function (r) {
+    if (!by[r.category_l1_name]) by[r.category_l1_name] = 0;
+    by[r.category_l1_name] += r.exposure_pv;
+  });
+  var items = CATS.map(function (c) { return { name: c.name, v: by[c.name] || 0 }; });
+  var max = Math.max.apply(null, items.map(function (x) { return x.v; }).concat([1]));
+  var colors = ["#9aa0a6", "#7b61ff", "#f29900", "#1a73e8"];
+  var h = 28 + items.length * 36;
+  var bars = items.map(function (item, i) {
+    var y = 16 + i * 36;
+    var w = (item.v / max) * 380;
+    return '<text x="8" y="' + (y + 14) + '" font-size="12" fill="#5f6368">' + item.name + '</text>' +
+      '<rect x="72" y="' + y + '" width="' + Math.max(w, item.v ? 4 : 0) + '" height="20" rx="3" fill="' + colors[i % colors.length] + '"/>' +
+      '<text x="' + (80 + Math.max(w, 0)) + '" y="' + (y + 15) + '" font-size="11" fill="#5f6368">' + fmtNum(item.v) + "</text>";
+  }).join("");
+  document.getElementById("cat-bars").innerHTML = '<svg class="chart-svg" viewBox="0 0 520 ' + h + '">' + bars + "</svg>";
+}
+
+function renderTrend(rows) {
+  var byDay = {};
+  rows.forEach(function (r) {
+    if (!byDay[r.dt]) byDay[r.dt] = { exp: 0, click: 0, play: 0 };
+    byDay[r.dt].exp += r.exposure_pv;
+    byDay[r.dt].click += r.click_pv;
+    byDay[r.dt].play += r.play_pv;
+  });
+  var days = Object.keys(byDay).sort();
+  if (!days.length) {
+    document.getElementById("trend").innerHTML = '<div class="empty">所选时间范围内暂无数据</div>';
+    return;
+  }
+  var max = 1;
+  days.forEach(function (d) {
+    max = Math.max(max, byDay[d].exp, byDay[d].click, byDay[d].play);
+  });
+  function y(v) { return 190 - (v / max) * 160; }
+  function pts(key) {
+    return days.map(function (d, i) {
+      var x = 50 + (days.length === 1 ? 225 : (i / (days.length - 1)) * 450);
+      return x + "," + y(byDay[d][key]);
+    }).join(" ");
+  }
+  var ticks = "";
+  for (var i = 0; i <= 4; i++) {
+    var yy = 30 + i * 40;
+    var val = Math.round(max * (1 - i / 4));
+    ticks += '<line x1="50" y1="' + yy + '" x2="500" y2="' + yy + '" stroke="#f1f3f4"/><text x="44" y="' + (yy + 4) + '" text-anchor="end" font-size="10" fill="#9aa0a6">' + val + "</text>";
+  }
+  var labels = days.map(function (d, i) {
+    if (days.length > 10 && i % Math.ceil(days.length / 7) !== 0 && i !== days.length - 1) return "";
+    var x = 50 + (days.length === 1 ? 225 : (i / (days.length - 1)) * 450);
+    return '<text x="' + x + '" y="208" text-anchor="middle" font-size="10" fill="#9aa0a6">' + d.slice(5) + "</text>";
+  }).join("");
+  document.getElementById("trend").innerHTML =
+    '<svg class="chart-svg" viewBox="0 0 520 230">' + ticks +
+    '<line x1="50" y1="190" x2="500" y2="190" stroke="#e8eaed"/>' +
+    '<polyline fill="none" stroke="#1a73e8" stroke-width="2.4" points="' + pts("exp") + '"/>' +
+    '<polyline fill="none" stroke="#f29900" stroke-width="2.2" stroke-dasharray="5 3" points="' + pts("click") + '"/>' +
+    '<polyline fill="none" stroke="#34a853" stroke-width="2.2" points="' + pts("play") + '"/>' +
+    labels + "</svg>";
+}
+
+function renderTable(rows) {
+  var sorted = rows.slice().sort(function (a, b) {
+    if (a.dt !== b.dt) return a.dt < b.dt ? 1 : -1;
+    return b.exposure_pv - a.exposure_pv;
+  });
+  if (!sorted.length) {
+    document.getElementById("table-wrap").innerHTML = '<div class="empty">所选时间范围内暂无数据</div>';
+    return;
+  }
+  var body = sorted.map(function (r) {
+    var ctr = r.exposure_pv ? fmtPct(r.click_pv / r.exposure_pv) : "—";
+    var real = r.dt === "2026-09-23";
+    return "<tr>" +
+      '<td>' + r.dt + (real ? ' <span class="badge">实数</span>' : "") + "</td>" +
+      "<td>" + r.category_l1_name + "</td>" +
+      '<td class="num">' + fmtNum(r.exposure_pv) + "</td>" +
+      '<td class="num">' + fmtNum(r.exposure_uv) + "</td>" +
+      '<td class="num">' + fmtNum(r.click_pv) + "</td>" +
+      '<td class="num">' + fmtNum(r.click_uv) + "</td>" +
+      '<td class="num">' + ctr + "</td>" +
+      '<td class="num">' + fmtNum(r.play_item_cnt) + "</td>" +
+      '<td class="num">' + fmtNum(r.play_pv) + "</td>" +
+      '<td class="num">' + fmtNum(r.play_uv) + "</td>" +
+      '<td class="num">' + fmtDur(r.play_dur_sec) + "</td>" +
+      '<td class="num">' + (r.avg_play_dur_per_uv === null ? "—" : fmtDur(r.avg_play_dur_per_uv)) + "</td>" +
+      '<td class="num">' + (r.avg_play_cnt_per_uv === null ? "—" : r.avg_play_cnt_per_uv) + "</td>" +
+      '<td class="num">' + fmtNum(r.like_pv) + "</td>" +
+      '<td class="num">' + fmtNum(r.collect_pv) + "</td>" +
+      '<td class="num">' + fmtNum(r.share_pv) + "</td>" +
+      "</tr>";
+  }).join("");
+  document.getElementById("table-wrap").innerHTML =
+    "<table><thead><tr>" +
+    "<th>日期</th><th>一级类目</th><th class='num'>曝光PV</th><th class='num'>曝光UV</th><th class='num'>点击PV</th><th class='num'>点击UV</th><th class='num'>CTR</th>" +
+    "<th class='num'>播放内容数</th><th class='num'>播放PV</th><th class='num'>播放UV</th><th class='num'>播放时长</th><th class='num'>人均时长</th><th class='num'>人均个数</th>" +
+    "<th class='num'>点赞PV</th><th class='num'>收藏PV</th><th class='num'>分享PV</th>" +
+    "</tr></thead><tbody>" + body + "</tbody></table>";
+}
+
+function renderAll() {
+  var rows = filteredRows();
+  renderKpi(rows);
+  renderFunnel(rows);
+  renderCatBars(rows);
+  renderTrend(rows);
+  renderTable(rows);
+}
+
+function applyPresetToDates(preset) {
+  var range = rangeForPreset(preset);
+  if (!range) return;
+  document.getElementById("range-start").value = formatDay(range.start);
+  document.getElementById("range-end").value = formatDay(range.end);
+}
+function syncPresetFromDates() {
+  var startEl = document.getElementById("range-start");
+  var endEl = document.getElementById("range-end");
+  clampDateInput(startEl);
+  clampDateInput(endEl);
+  if (startEl.value > endEl.value) startEl.value = endEl.value;
+  document.getElementById("range-preset").value = presetForRange(startEl.value, endEl.value);
+  renderAll();
+}
+
+(function init() {
+  var sel = document.getElementById("cat-filter");
+  CATS.forEach(function (c) {
+    var opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = c.name;
+    sel.appendChild(opt);
+  });
+  clampDateInput(document.getElementById("range-start"));
+  clampDateInput(document.getElementById("range-end"));
+  applyPresetToDates("7");
+  document.getElementById("range-preset").value = "7";
+  document.getElementById("range-preset").addEventListener("change", function () {
+    if (this.value !== "-") applyPresetToDates(this.value);
+    renderAll();
+  });
+  document.getElementById("range-start").addEventListener("change", syncPresetFromDates);
+  document.getElementById("range-end").addEventListener("change", syncPresetFromDates);
+  sel.addEventListener("change", renderAll);
+  renderAll();
+})();
+</script>
+</body>
+</html>

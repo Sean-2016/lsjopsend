@@ -1,0 +1,6 @@
+﻿dt,app_id,category_l1_id,category_l1_name,exposure_pv,exposure_uv,click_pv,click_uv,play_item_cnt,play_pv,play_uv,play_dur_sec,avg_play_dur_per_uv,avg_play_cnt_per_uv,like_pv,like_uv,collect_pv,collect_uv,share_pv,share_uv,ingest_time
+统计日期,业务id,视频一级类目ID（dim.cat_id）,视频一级类目名称（dim.cat_name）,推荐曝光PV：recommend_list_view 次数,"推荐曝光UV：曝光去重访客；访客键=COALESCE(uid,device_id)",推荐点击PV：recommend_list_click 次数,推荐点击UV：点击去重访客,有播放内容数：当日 video_play 去重视频数,播放PV：video_play 次数,"播放UV：播放去重访客；访客键=COALESCE(uid,device_id)",播放总时长（秒）,人均播放时长（秒）=play_dur_sec/play_uv；play_uv=0 为空,人均观看个数=play_pv/play_uv；play_uv=0 为空,点赞PV：flag=1 次数,点赞UV：有效点赞去重访客,收藏PV：flag=1 次数,收藏UV：有效收藏去重访客,分享PV：video_share 次数,分享UV：分享去重访客,[派生] 入库时间
+2026-09-23,SZ-002,6aaba8c786461a3155341d9d,通用,0,0,0,0,0,0,0,0,,,0,0,0,0,0,0,2026-09-24 10:13:52
+2026-09-23,SZ-002,6aaba81b86461a3155341d9a,视频,0,0,0,0,0,0,0,0,,,0,0,0,0,0,0,2026-09-24 10:13:52
+2026-09-23,SZ-002,6aad11b758e7713cc4b7cfd3,Tycoon,1,1,0,0,0,0,0,0,,,0,0,0,0,0,0,2026-09-24 10:13:52
+2026-09-23,SZ-002,6aab68cb58a4ec13ab566d6a,video,19,2,0,0,0,0,0,0,,,0,0,0,0,0,0,2026-09-24 10:13:52

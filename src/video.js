@@ -39,8 +39,13 @@ const videoState = {
       id: "7f5dbefa9ab40e8e8927cb1",
       name: "星际远征：破向星海深处",
       lang: "国语",
-      fee: "free",
-      feeForm: "",
+      fee: "paid",
+      payWay: "coin",
+      coinAmount: "100",
+      previewMode: "second",
+      previewSec: "100",
+      freeEps: "2",
+      feeForm: "100 个/集",
       memberType: "",
       category: "橙子1",
       serial: "连载中",
@@ -88,9 +93,15 @@ const videoState = {
       id: "1bacefcbb20829e3e2b67a056",
       name: "甜蜜霸总：灰姑娘的甜蜜逆袭",
       lang: "土耳其语",
-      fee: "free",
-      feeForm: "",
-      memberType: "",
+      fee: "paid",
+      payWay: "member",
+      coinAmount: "",
+      previewMode: "episode",
+      previewSec: "100",
+      freeEps: "2",
+      feeForm: "会员",
+      memberType: "未付费新人",
+      audience: ["pack_unpaid"],
       category: "1223",
       serial: "连载中",
       score: "65",
@@ -266,6 +277,7 @@ function filteredVideoAlbums() {
     if (f.name && !item.name.includes(f.name.trim())) return false;
     if (f.lang && item.lang !== f.lang) return false;
     if (f.fee && item.fee !== f.fee) return false;
+    if (f.feeForm && item.payWay !== f.feeForm) return false;
     if (f.category && item.category !== f.category) return false;
     if (f.serial && item.serial !== f.serial) return false;
     if (f.author && !item.author.includes(f.author.trim())) return false;
@@ -318,7 +330,8 @@ function renderVideoPage() {
           <label>资费形式
             <select class="input" data-video-filter="feeForm">
               <option value="">全部</option>
-              <option value="member" ${d.feeForm === "member" ? "selected" : ""}>会员专辑</option>
+              <option value="coin" ${d.feeForm === "coin" ? "selected" : ""}>金币</option>
+              <option value="member" ${d.feeForm === "member" ? "selected" : ""}>会员</option>
             </select>
           </label>
           <label>分类
@@ -368,7 +381,7 @@ function renderVideoPage() {
         <thead>
           <tr>
             <th><input type="checkbox" data-video-act="toggle-all" ${rows.length && rows.every((item) => videoState.selected.includes(item.id)) ? "checked" : ""} /></th>
-            <th>专辑编码</th><th>专辑名称</th><th>语言</th><th>资费状态</th><th>资费形式</th><th>会员类型</th>
+            <th>专辑编码</th><th>专辑名称</th><th>语言</th><th>资费状态</th><th>资费形式</th><th>用户群体</th>
             <th>内容分类</th><th>上架时间</th><th>连载状态</th><th>评分</th><th>作者用户</th><th>标签</th><th>所属标签组</th>
             <th>横图</th><th>竖图</th><th>入库时间</th><th>更新时间</th><th>上架时间</th><th>下架时间</th>
             <th>状态</th><th>总集数</th><th>当前最新</th><th>上架人</th><th>下架人</th><th>操作栏</th>
@@ -862,45 +875,226 @@ function renderVideoSearchTab(form) {
   `;
 }
 
+function selectedFeeAlbumIds() {
+  if (videoState.selected.length) return videoState.selected.slice();
+  if (videoState.drawer && videoState.drawer.album) return [videoState.drawer.album.id];
+  return [];
+}
+
+function feeFormKey(album) {
+  return album && album.feeForm === "全部会员" ? "all" : "member";
+}
+
+function currentSessionPacks() {
+  if (typeof segmentState === "undefined" || !Array.isArray(segmentState.packs)) return [];
+  return segmentState.packs.slice();
+}
+
+function feeAudienceNames(ids) {
+  const byId = new Map(currentSessionPacks().map((pack) => [pack.id, pack]));
+  return (ids || [])
+    .map((id) => byId.get(id))
+    .filter(Boolean)
+    .map((pack) => (pack.enabled ? pack.name : `${pack.name}（已停用）`));
+}
+
+function isFeeCount(value) {
+  return /^(0|[1-9]\d*)$/.test(String(value || "").trim());
+}
+
+function isCoinCount(value) {
+  return /^[1-9]\d*$/.test(String(value || "").trim());
+}
+
+function feeCoinHint(amount) {
+  const coins = typeof coinState !== "undefined" ? coinState.valueConfig.coins : "";
+  const cash = typeof coinState !== "undefined" ? coinState.valueConfig.cash : "";
+  const rate = coins && cash ? `${coins} 金币 = ${cash}` : "未配置";
+  if (!isCoinCount(amount)) return `填写金币数量。金币价值配置：${rate}`;
+  const price = typeof calcListPrice === "function" ? calcListPrice(amount) : "";
+  return price ? `预估金额 ${price} / 集（金币价值配置：${rate}）` : `金币价值配置：${rate}`;
+}
+
+function feePaidError(modal) {
+  if (modal.previewMode !== "second" && modal.previewMode !== "episode") return "请选择免费试看方式";
+  if (modal.previewMode === "second" && !isFeeCount(modal.previewSec)) return "单片免费秒数请填写大于或等于 0 的整数";
+  if (modal.previewMode === "episode" && !isFeeCount(modal.freeEps)) return "免费集数请填写大于或等于 0 的整数";
+  if (modal.payWay !== "coin" && modal.payWay !== "member") return "请选择资费形式";
+  if (modal.payWay === "coin" && !isCoinCount(modal.coinAmount)) return "请填写大于 0 的金币数量";
+  if (modal.payWay === "member" && !(modal.audience && modal.audience.length)) return "请选择支持用户群体";
+  return "";
+}
+
+function paidFeeDefaults(album) {
+  const multi = album && Number(album.episodes) > 1;
+  return {
+    previewMode: multi ? "episode" : "second",
+    previewSec: "100",
+    freeEps: "2",
+    payWay: "member",
+    coinAmount: "",
+    audience: [],
+    form: "member",
+    member: "all",
+  };
+}
+
+function openVideoFeeModal() {
+  const albums = selectedFeeAlbumIds().map(videoAlbumById).filter(Boolean);
+  const base = albums[0];
+  const paid = Boolean(base && base.fee === "paid");
+  const defaults = paidFeeDefaults(base);
+  videoState.feeModal = {
+    type: paid ? "paid" : "free",
+    previewMode: base && base.previewMode ? base.previewMode : defaults.previewMode,
+    previewSec: base && base.previewSec != null && base.previewSec !== "" ? String(base.previewSec) : defaults.previewSec,
+    freeEps: base && base.freeEps != null && base.freeEps !== "" ? String(base.freeEps) : defaults.freeEps,
+    payWay: base && base.payWay ? base.payWay : paid ? defaults.payWay : "",
+    coinAmount: base && base.coinAmount != null ? String(base.coinAmount) : "",
+    audience: Array.isArray(base && base.audience) ? base.audience.slice() : [],
+    form: feeFormKey(base),
+    error: "",
+    count: albums.length,
+    mixed:
+      albums.length > 1 &&
+      albums.some(
+        (item) =>
+          item.fee !== base.fee ||
+          item.payWay !== base.payWay ||
+          item.previewMode !== base.previewMode ||
+          item.feeForm !== base.feeForm ||
+          item.memberType !== base.memberType ||
+          String((item.audience || []).join(",")) !== String((base.audience || []).join(",")) ||
+          String(item.coinAmount || "") !== String(base.coinAmount || ""),
+      ),
+  };
+}
+
 function renderVideoFeeModal() {
   const modal = videoState.feeModal;
   if (!modal) return "";
   const paid = modal.type === "paid";
   return `
     <div class="mask">
-      <div class="dialog">
-        <div class="dialog-title">资费调整<button type="button" class="icon-x" data-video-act="close-fee">×</button></div>
+      <div class="dialog fee-dialog" role="dialog" aria-labelledby="fee-dialog-title">
+        <div class="dialog-title" id="fee-dialog-title">资费调整<button type="button" class="icon-x" data-video-act="close-fee" aria-label="关闭">×</button></div>
         <div class="dialog-body">
-          <div class="video-fee-picks">
-            <button type="button" class="video-fee-pick${modal.type === "free" ? " on" : ""}" data-video-act="fee-type" data-id="free">免费</button>
-            <button type="button" class="video-fee-pick${paid ? " on" : ""}" data-video-act="fee-type" data-id="paid">付费</button>
+          ${modal.count > 1 ? `<p class="fee-hint">${modal.mixed ? `已选 ${modal.count} 个专辑，资费不一致。确定后按当前表单统一覆盖。` : `已选 ${modal.count} 个专辑，确定后统一覆盖。`}</p>` : ""}
+          <div class="fee-seg" role="group" aria-label="资费状态">
+            <button type="button" class="${modal.type === "free" ? "on" : ""}" data-video-act="fee-type" data-id="free">免费</button>
+            <button type="button" class="${paid ? "on" : ""}" data-video-act="fee-type" data-id="paid">付费</button>
           </div>
           ${
             paid
               ? `
-            <div class="label" style="margin-top:12px">免费试看设置</div>
-            <div class="video-range" style="margin:8px 0">
-              前 <input class="input narrow" data-video-fee="freeEps" value="${escapeHtml(modal.freeEps)}" /> 集免费试看，付费起始第
-              <input class="input narrow" data-video-fee="previewSec" value="${escapeHtml(modal.previewSec)}" /> 秒试看
+          <div class="fee-block">
+            <div>
+              <div class="fee-label">免费试看设置</div>
+              <div class="fee-choices">
+                <div class="fee-line">
+                  <label class="fee-radio" data-video-act="fee-preview" data-id="second">
+                    <input type="radio" name="feePreview" ${modal.previewMode === "second" ? "checked" : ""} />
+                    单片视频前
+                  </label>
+                  <input class="input" data-video-fee="previewSec" inputmode="numeric" value="${escapeHtml(modal.previewSec)}" ${modal.previewMode === "second" ? "" : "disabled"} />
+                  <span>秒免费</span>
+                </div>
+                <div class="fee-line">
+                  <label class="fee-radio" data-video-act="fee-preview" data-id="episode">
+                    <input type="radio" name="feePreview" ${modal.previewMode === "episode" ? "checked" : ""} />
+                    多集视频前
+                  </label>
+                  <input class="input" data-video-fee="freeEps" inputmode="numeric" value="${escapeHtml(modal.freeEps)}" ${modal.previewMode === "episode" ? "" : "disabled"} />
+                  <span>集免费</span>
+                </div>
+              </div>
             </div>
-            <label>资费形式
-              <select class="input" data-video-fee="form">
-                <option value="member" ${modal.form === "member" ? "selected" : ""}>会员专辑</option>
-                <option value="all" ${modal.form === "all" ? "selected" : ""}>全部会员</option>
-              </select>
-            </label>
-            <label>支持会员类型
-              <select class="input" data-video-fee="member">
-                <option value="all" ${modal.member === "all" ? "selected" : ""}>全部会员</option>
-                <option value="list" ${modal.member === "list" ? "selected" : ""}>指定会员包列表</option>
-              </select>
-            </label>`
-              : ""
+            <div>
+              <div class="fee-label fee-req">资费形式</div>
+              <div class="fee-choices">
+                <div class="fee-line">
+                  <label class="fee-radio" data-video-act="fee-pay" data-id="coin">
+                    <input type="radio" name="feePay" ${modal.payWay === "coin" ? "checked" : ""} />
+                    金币
+                  </label>
+                  ${
+                    modal.payWay === "coin"
+                      ? `<input class="input fee-coin" data-video-fee="coinAmount" inputmode="numeric" value="${escapeHtml(modal.coinAmount)}" placeholder="金币数量" />
+                  <span>个/集</span>`
+                      : ""
+                  }
+                </div>
+                ${modal.payWay === "coin" ? `<p class="fee-hint" data-fee-estimate>${escapeHtml(feeCoinHint(modal.coinAmount))}</p>` : ""}
+                <div class="fee-line">
+                  <label class="fee-radio" data-video-act="fee-pay" data-id="member">
+                    <input type="radio" name="feePay" ${modal.payWay === "member" ? "checked" : ""} />
+                    会员
+                  </label>
+                </div>
+                ${
+                  modal.payWay === "member"
+                    ? `<div class="fee-audience">
+                  <div class="fee-label">支持用户群体</div>
+                  <div class="fee-audience-row">
+                    <div class="fee-audience-tags">${
+                      feeAudienceNames(modal.audience).length
+                        ? feeAudienceNames(modal.audience)
+                            .map((name) => `<span class="chip">${escapeHtml(name)}</span>`)
+                            .join("")
+                        : '<span class="muted">未选择用户群体</span>'
+                    }</div>
+                    <button type="button" class="btn" data-video-act="fee-open-packs">选择</button>
+                    <button type="button" class="link" data-video-act="fee-goto-segment">用户圈选</button>
+                  </div>
+                </div>`
+                    : ""
+                }
+              </div>
+            </div>
+            ${modal.error ? `<p class="fee-hint fee-error">${escapeHtml(modal.error)}</p>` : ""}
+          </div>`
+              : `<p class="fee-hint">当前为免费，观众可直接观看全部分集。</p>`
           }
         </div>
         <div class="dialog-foot">
           <button type="button" class="btn" data-video-act="close-fee">取消</button>
           <button type="button" class="btn btn-primary" data-video-act="fee-ok">确定</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderVideoFeePackPicker() {
+  if (!videoState.feePackPicker || !videoState.feeModal) return "";
+  const packs = currentSessionPacks();
+  const liveIds = new Set(packs.map((pack) => pack.id));
+  const selected = new Set((videoState.feeModal.audience || []).filter((id) => liveIds.has(id)));
+  return `
+    <div class="mask">
+      <div class="dialog" role="dialog" aria-labelledby="fee-pack-title">
+        <div class="dialog-title" id="fee-pack-title">选择用户群体<button type="button" class="icon-x" data-video-act="fee-close-packs" aria-label="关闭">×</button></div>
+        <div class="dialog-body">
+          <p class="filter-hint">读取本次打开中用户圈选的人群包，共 ${packs.length} 个。新建、改名或启停后，再打开本列表即为当前数据。已停用的包不能新选。</p>
+          ${
+            packs.length
+              ? packs
+                  .map((pack) => {
+                    const checked = selected.has(pack.id);
+                    const locked = !pack.enabled && !checked;
+                    return `
+            <label class="tag-option${locked ? " is-locked" : ""}">
+              <input type="checkbox" data-video-act="fee-toggle-pack" data-id="${escapeHtml(pack.id)}" ${checked ? "checked" : ""} ${locked ? "disabled" : ""} />
+              <span>${escapeHtml(pack.name)}${pack.enabled ? "" : "（已停用）"}</span>
+            </label>`;
+                  })
+                  .join("")
+              : '<div class="empty">本次打开中还没有人群包，请先到用户圈选新建</div>'
+          }
+        </div>
+        <div class="dialog-foot">
+          <button type="button" class="link" data-video-act="fee-goto-segment">用户圈选</button>
+          <button type="button" class="btn btn-primary" data-video-act="fee-close-packs">完成</button>
         </div>
       </div>
     </div>
@@ -1092,7 +1286,7 @@ function onVideoClick(e) {
       showToast("请先勾选专辑", "error");
       return;
     }
-    videoState.feeModal = { type: "", freeEps: "0", previewSec: "0", form: "member", member: "all" };
+    openVideoFeeModal();
     renderApp();
   } else if (act === "pick-tag") {
     const set = new Set(videoState.pickedTags);
@@ -1125,8 +1319,12 @@ function onVideoOverlayClick(e) {
   const btn = e.target.closest("[data-video-act]");
   if (!btn) {
     if (e.target.classList && e.target.classList.contains("mask") && !e.target.closest(".drawer") && !e.target.closest(".dialog")) {
-      if (videoState.feeModal) {
+      if (videoState.feePackPicker) {
+        videoState.feePackPicker = false;
+        renderApp();
+      } else if (videoState.feeModal) {
         videoState.feeModal = null;
+        videoState.feePackPicker = false;
         renderApp();
       } else closeVideoDrawer();
     }
@@ -1203,28 +1401,112 @@ function onVideoOverlayClick(e) {
     showToast("搜索推荐参数已提交");
     renderApp();
   } else if (act === "fee") {
-    videoState.feeModal = { type: "", freeEps: "0", previewSec: "0", form: "member", member: "all" };
+    openVideoFeeModal();
     renderApp();
   } else if (act === "close-fee") {
     videoState.feeModal = null;
+    videoState.feePackPicker = false;
+    renderApp();
+  } else if (act === "fee-open-packs") {
+    const liveIds = new Set(currentSessionPacks().map((pack) => pack.id));
+    videoState.feeModal.audience = (videoState.feeModal.audience || []).filter((id) => liveIds.has(id));
+    videoState.feePackPicker = true;
+    renderApp();
+  } else if (act === "fee-close-packs") {
+    videoState.feePackPicker = false;
+    renderApp();
+  } else if (act === "fee-toggle-pack") {
+    const modal = videoState.feeModal;
+    if (!modal) return;
+    const pack = currentSessionPacks().find((item) => item.id === btn.dataset.id);
+    if (!pack) {
+      showToast("该人群包已不在当前用户圈选中", "error");
+      renderApp();
+      return;
+    }
+    const set = new Set(modal.audience || []);
+    if (btn.checked && !pack.enabled) {
+      showToast("已停用的人群包不能新选，请先在用户圈选中启用", "error");
+      btn.checked = false;
+      return;
+    }
+    if (btn.checked) set.add(pack.id);
+    else set.delete(pack.id);
+    modal.audience = [...set];
+    modal.error = "";
+    renderApp();
+  } else if (act === "fee-goto-segment") {
+    const ids = (videoState.feeModal && videoState.feeModal.audience) || [];
+    videoState.feePackPicker = false;
+    openPage("user-tag-segment");
+    if (ids[0] && typeof segmentState !== "undefined") segmentState.selectedPackId = ids[0];
     renderApp();
   } else if (act === "fee-type") {
     videoState.feeModal.type = btn.dataset.id;
+    if (btn.dataset.id === "paid" && !videoState.feeModal.payWay) {
+      const album = selectedFeeAlbumIds().map(videoAlbumById).filter(Boolean)[0];
+      Object.assign(videoState.feeModal, paidFeeDefaults(album), {
+        previewMode: videoState.feeModal.previewMode || paidFeeDefaults(album).previewMode,
+        previewSec: videoState.feeModal.previewSec || "100",
+        freeEps: videoState.feeModal.freeEps || "2",
+      });
+    }
+    videoState.feeModal.error = "";
+    renderApp();
+  } else if (act === "fee-preview" || act === "fee-pay") {
+    if (e.target.closest("[data-video-fee]")) return;
+    if (act === "fee-preview") videoState.feeModal.previewMode = btn.dataset.id;
+    else videoState.feeModal.payWay = btn.dataset.id;
+    videoState.feeModal.error = "";
     renderApp();
   } else if (act === "fee-ok") {
-    if (!videoState.feeModal.type) {
+    const modal = videoState.feeModal;
+    if (modal.type !== "free" && modal.type !== "paid") {
       showToast("请选择免费或付费", "error");
       return;
     }
+    if (modal.type === "paid") {
+      const error = feePaidError(modal);
+      if (error) {
+        modal.error = error;
+        showToast(error, "error");
+        renderApp();
+        return;
+      }
+    }
     const ids = videoState.selected.length ? videoState.selected : videoState.drawer && videoState.drawer.album ? [videoState.drawer.album.id] : [];
     videoState.albums.forEach((item) => {
-      if (ids.includes(item.id)) {
-        item.fee = videoState.feeModal.type;
-        item.feeForm = videoState.feeModal.type === "paid" ? (videoState.feeModal.form === "member" ? "会员专辑" : "全部会员") : "";
-        item.memberType = videoState.feeModal.type === "paid" ? (videoState.feeModal.member === "all" ? "全部会员" : "指定会员包") : "";
+      if (!ids.includes(item.id)) return;
+      item.fee = modal.type;
+      if (modal.type !== "paid") {
+        item.payWay = "";
+        item.coinAmount = "";
+        item.previewMode = "";
+        item.previewSec = "";
+        item.freeEps = "";
+        item.feeForm = "";
+        item.memberType = "";
+        item.audience = [];
+        return;
+      }
+      item.previewMode = modal.previewMode;
+      item.previewSec = modal.previewSec;
+      item.freeEps = modal.freeEps;
+      item.payWay = modal.payWay;
+      if (modal.payWay === "coin") {
+        item.coinAmount = String(modal.coinAmount).trim();
+        item.feeForm = `${item.coinAmount} 个/集`;
+        item.memberType = "";
+        item.audience = [];
+      } else {
+        item.coinAmount = "";
+        item.audience = (modal.audience || []).slice();
+        item.feeForm = "会员";
+        item.memberType = feeAudienceNames(item.audience).join("、");
       }
     });
     videoState.feeModal = null;
+    videoState.feePackPicker = false;
     showToast("资费已调整");
     renderApp();
   }
@@ -1232,12 +1514,21 @@ function onVideoOverlayClick(e) {
 
 function bindVideoOverlays() {
   const overlay = document.getElementById("overlay-root");
-  overlay.innerHTML = renderVideoDrawer() + renderVideoFeeModal();
+  overlay.innerHTML = renderVideoDrawer() + renderVideoFeeModal() + renderVideoFeePackPicker();
   const hasOverlay = Boolean(overlay.querySelector(".mask") || document.getElementById("confirm-modal"));
   document.documentElement.classList.toggle("overlay-open", hasOverlay);
   if (!overlay.dataset.videoBound) {
     overlay.dataset.videoBound = "1";
     overlay.addEventListener("click", onVideoOverlayClick);
+    overlay.addEventListener("input", (e) => {
+      const fee = e.target.closest("[data-video-fee]");
+      if (!fee || !videoState.feeModal) return;
+      videoState.feeModal[fee.dataset.videoFee] = fee.value;
+      if (fee.dataset.videoFee === "coinAmount") {
+        const hint = overlay.querySelector("[data-fee-estimate]");
+        if (hint) hint.textContent = feeCoinHint(fee.value);
+      }
+    });
     overlay.addEventListener("change", (e) => {
       if (e.target.closest("[data-video-act]")) onVideoOverlayClick(e);
       const fee = e.target.closest("[data-video-fee]");

@@ -804,6 +804,28 @@ textarea.input {
   font-size: 13px;
 }
 
+.device-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 8px 0 0;
+}
+
+.device-options label {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  color: #262626;
+  cursor: pointer;
+}
+
+.device-options input {
+  margin: 0;
+}
+
 .check {
   display: flex;
   align-items: center;
@@ -812,19 +834,63 @@ textarea.input {
   font-size: 13px;
 }
 
+.cond-block {
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.cond-summary {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #595959;
+  line-height: 1.5;
+}
+
+.detail-kv {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 8px 12px;
+  margin: 0 0 16px;
+  font-size: 13px;
+}
+
+.detail-kv span {
+  color: #8c8c8c;
+}
+
+.dialog-body h4 {
+  margin: 16px 0 8px;
+  font-size: 14px;
+}
+
 .cond-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 8px 0;
+  margin: 0 0 10px;
 }
 
-.amount-range {
+.cond-params {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding: 0 0 10px 8px;
+  margin: 0;
+  font-size: 13px;
+  color: #595959;
+}
+
+.cond-params .input {
+  width: auto;
+  min-width: 120px;
+}
+
+.cond-params .input.narrow {
+  width: 72px;
+  min-width: 72px;
 }
 
 .amount-label {
@@ -1074,6 +1140,21 @@ textarea.input {
   transition: transform 0.15s ease;
 }
 
+.create-pack-dialog {
+  width: min(1080px, calc(100vw - 40px));
+  height: min(900px, calc(100vh - 32px));
+  max-width: none;
+}
+
+.create-pack-dialog .dialog-body {
+  overflow: auto;
+}
+
+.create-pack-form .enable-switch {
+  flex-direction: row;
+  margin: 0 0 16px;
+}
+
 .enable-switch.on {
   color: #1677ff;
 }
@@ -1309,17 +1390,17 @@ textarea.input {
 }
 
 .picker-dialog {
-  width: min(1120px, calc(100vw - 72px));
-  height: min(780px, calc(100vh - 72px));
-  max-width: none;
-  max-height: none;
+  width: min(860px, calc(100vw - 48px));
+  height: auto;
+  max-height: min(640px, calc(100vh - 48px));
 }
 
 .picker-dialog .dialog-body {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .picker-dialog .dialog-body .input {
@@ -1328,17 +1409,36 @@ textarea.input {
 }
 
 .picker-dialog .add-list {
-  flex: 1;
-  min-height: 0;
+  flex: none;
   max-height: none;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px 12px;
-  align-content: start;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 14px 0 4px;
 }
 
-.picker-dialog .add-list .empty-inline {
-  grid-column: 1 / -1;
+.picker-group-title {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8c8c8c;
+}
+
+.picker-group-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px 12px;
+}
+
+.picker-dialog .tag-option {
+  align-items: flex-start;
+  min-height: 36px;
+  padding: 7px 8px;
+}
+
+.picker-dialog .tag-option input {
+  margin-top: 2px;
 }
 
 html.overlay-open,
@@ -2057,24 +2157,161 @@ h4 {
   gap: 8px;
 }
 
-.video-fee-picks {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+.fee-dialog {
+  width: min(560px, calc(100vw - 48px));
 }
 
-.video-fee-pick {
-  height: 40px;
-  border: 1px solid #d9d9d9;
+.fee-dialog .dialog-title,
+.fee-dialog .dialog-body,
+.fee-dialog .dialog-foot {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.fee-dialog .dialog-body {
+  padding-top: 20px;
+  padding-bottom: 8px;
+}
+
+.fee-dialog .dialog-foot {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fee-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  background: #f5f5f5;
   border-radius: 6px;
-  background: #fff;
+}
+
+.fee-seg button {
+  height: 32px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #595959;
+  font-size: 14px;
   cursor: pointer;
 }
 
-.video-fee-pick.on {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: #e6f4ff;
+.fee-seg button.on {
+  background: #fff;
+  color: #262626;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.fee-block {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.fee-label {
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #262626;
+}
+
+.fee-req::before {
+  content: "*";
+  margin-right: 4px;
+  color: #ff4d4f;
+}
+
+.fee-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.fee-field .input {
+  width: 100%;
+}
+
+.fee-trial {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #262626;
+}
+
+.fee-trial .input {
+  width: 72px;
+  text-align: center;
+}
+
+.fee-hint {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #8c8c8c;
+}
+
+.fee-error {
+  color: #cf1322;
+}
+
+.fee-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fee-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  font-size: 14px;
+  color: #262626;
+}
+
+.fee-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.fee-radio input {
+  margin: 0;
+}
+
+.fee-line .input {
+  width: 72px;
+  text-align: center;
+}
+
+.fee-line .fee-coin {
+  width: 120px;
+  text-align: left;
+}
+
+.fee-audience {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-left: 22px;
+}
+
+.fee-audience-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.fee-audience-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
 }
 
 .rank-sec-title {

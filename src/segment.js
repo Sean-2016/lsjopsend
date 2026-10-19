@@ -9,8 +9,13 @@ const segmentState = {
   packDirty: false,
   packSearch: "",
   picker: null,
+  templatePick: "",
   countryQuery: "",
   countryOpen: false,
+  createPack: null,
+  detailPackId: null,
+  packStatus: "",
+  packCreator: "",
 };
 
 function showToast(message, type) {
@@ -47,9 +52,24 @@ function showConfirm({ title, text, okText, danger, onOk }) {
   document.body.appendChild(wrap);
 }
 
+function createPackHasInput() {
+  const form = segmentState.createPack;
+  if (!form) return false;
+  return Boolean(
+    (form.name || "").trim() ||
+      (form.desc || "").trim() ||
+      form.enabled ||
+      (form.includes && form.includes.length) ||
+      (form.excludes && form.excludes.length) ||
+      (form.countries && form.countries.length) ||
+      (form.devices && form.devices.length),
+  );
+}
+
 function isSegmentDirty() {
   return Boolean(
     segmentState.packDirty ||
+      createPackHasInput() ||
       (segmentState.drawer && segmentState.drawer.dirty) ||
       (typeof isCoinDirty === "function" && isCoinDirty()) ||
       (typeof isUserDirty === "function" && isUserDirty()) ||
@@ -63,6 +83,7 @@ function isSegmentDirty() {
 
 function confirmLeaveIfDirty(next) {
   if (!isSegmentDirty()) {
+    segmentState.createPack = null;
     next();
     return;
   }
@@ -73,6 +94,7 @@ function confirmLeaveIfDirty(next) {
     danger: true,
     onOk: () => {
       segmentState.packDirty = false;
+      segmentState.createPack = null;
       if (segmentState.drawer) segmentState.drawer.dirty = false;
       segmentState.drawer = null;
       if (typeof coinState !== "undefined") {
@@ -94,6 +116,7 @@ function confirmLeaveIfDirty(next) {
       if (typeof videoState !== "undefined") {
         videoState.drawer = null;
         videoState.feeModal = null;
+        videoState.feePackPicker = false;
       }
       if (typeof rankState !== "undefined") rankState.modal = null;
       if (typeof categoryState !== "undefined") {
@@ -126,8 +149,8 @@ function packById(id) {
 }
 
 function packsUsingTag(tagId) {
-  return segmentState.packs.filter(
-    (pack) => pack.includes.includes(tagId) || pack.excludes.includes(tagId),
+  return segmentState.packs.filter((pack) =>
+    (pack.includes || []).concat(pack.excludes || []).some((item) => condTagId(item) === tagId),
   );
 }
 
@@ -185,7 +208,7 @@ function renderTagLibraryPage() {
       return `
         <tr class="data-row${highlight}" data-id="${tag.id}">
           <td>
-            <div class="cell-title">${escapeHtml(tag.name)}${tag.system ? '<span class="row-badge">系统预置</span>' : ""}</div>
+            <div class="cell-title">${escapeHtml(tag.name)}</div>
             <code class="cell-code">${escapeHtml(tag.code)}</code>
           </td>
           <td><span class="truncate" title="${escapeHtml(desc)}">${escapeHtml(summary) || "—"}</span></td>
@@ -207,10 +230,7 @@ function renderTagLibraryPage() {
       <div class="page-head">
         <div>
           <h1>标签库</h1>
-          <p>创建标签并写清判定口径。启用后可在用户圈选里勾选。</p>
-        </div>
-        <div class="page-head-actions">
-          <button type="button" class="btn btn-primary" data-act="create">新建标签</button>
+          <p>第一期 16 条。天数、金额和窗口在用户圈选里填，不在这里改。</p>
         </div>
       </div>
       <div class="filter-bar">
@@ -239,23 +259,11 @@ function renderTagLibraryPage() {
             : `<div class="empty">
                 <div class="empty-art"></div>
                 <div>还没有标签</div>
-                <button type="button" class="btn btn-primary" data-act="create">新建标签</button>
               </div>`
         }
       </div>
     </div>
   `;
-}
-
-function blankTagForm() {
-  return {
-    name: "",
-    code: "",
-    description: "",
-    status: "enabled",
-    params: {},
-    system: false,
-  };
 }
 
 function formFromTag(tag) {
@@ -273,38 +281,35 @@ function renderTagDrawer() {
   const drawer = segmentState.drawer;
   if (!drawer) return "";
   const form = drawer.form;
-  const isEdit = drawer.mode === "edit";
   const descEmpty = !(form.description || "").trim();
   const saveDisabled = descEmpty || !form.name.trim() || !form.code.trim();
   const nameLocked = form.system;
-  const windowField =
-    form.code === "new" || form.params.duration
-      ? `<label>新用户窗口（小时）
-          <input class="input" type="number" data-form="duration" value="${form.params.duration || 24}" />
-        </label>`
-      : "";
+  const meta = drawer.tag || {};
+  const metaLine = meta.shape
+    ? `<div class="field-hint">形态：${escapeHtml(meta.shape)} · 许可：${escapeHtml(meta.permit || "—")}${meta.subject ? " · 主体：" + escapeHtml(meta.subject) : ""}</div>`
+    : "";
 
   return `
     <div class="mask drawer-mask">
       <aside class="drawer">
         <div class="drawer-head">
-          <h3>${isEdit ? "编辑标签" : "新建标签"}</h3>
+          <h3>编辑标签</h3>
           <button type="button" class="icon-x" data-act="close-drawer">×</button>
         </div>
         <div class="drawer-body">
-          ${form.system ? '<div class="info-bar">系统预置，名称和 code 不可改，描述和窗口参数可改。</div>' : ""}
+          <div class="info-bar">名称和 code 不可改。天数、金额、窗口到用户圈选里填。</div>
+          ${metaLine}
           <label>展示名称 *
-            <input class="input" data-form="name" value="${escapeHtml(form.name)}" ${nameLocked ? "readonly" : ""} placeholder="新用户" />
+            <input class="input" data-form="name" value="${escapeHtml(form.name)}" ${nameLocked ? "readonly" : ""} placeholder="注册时间" />
           </label>
           <label>内部 code *
-            <input class="input" data-form="code" value="${escapeHtml(form.code)}" placeholder="向大数据技术申请标识，如 new、paid" ${isEdit || nameLocked ? "readonly" : ""} />
+            <input class="input" data-form="code" value="${escapeHtml(form.code)}" readonly />
             <span class="field-hint">需向大数据同学要口径对应的 code，保存后不可改</span>
           </label>
           <label>准确描述 *
-            <textarea class="input" rows="4" data-form="description" placeholder="写清判定口径，例如：注册成功起未满 24 小时，且从未成功充值">${escapeHtml(form.description)}</textarea>
+            <textarea class="input" rows="4" data-form="description" placeholder="写清判定口径，例如：注册成功的时间，圈选时用当前时间相减得到注册时长">${escapeHtml(form.description)}</textarea>
             ${descEmpty ? '<span class="field-error">描述不能为空</span>' : '<span class="field-hint">写清怎么判定，便于验收</span>'}
           </label>
-          ${windowField}
         </div>
         <div class="drawer-foot">
           <button type="button" class="btn" data-act="close-drawer">取消</button>
@@ -352,32 +357,14 @@ function saveTag() {
     showToast("描述不能为空", "error");
     return;
   }
-  if (drawer.mode === "create") {
-    segmentState.tags.unshift({
-      id: form.code,
-      name: form.name,
-      code: form.code,
-      status: "enabled",
-      system: false,
-      params: form.params,
-      description: form.description,
-      updatedAt: "09-08 18:30",
-      updatedBy: "运营小王",
-    });
-  } else {
-    Object.assign(drawer.tag, {
-      name: form.system ? drawer.tag.name : form.name,
-      params: form.params,
-      description: form.description,
-      updatedAt: "09-08 18:30",
-      updatedBy: "运营小王",
-    });
-    if (drawer.tag.id === "new" && form.params.duration) {
-      drawer.tag.description = form.description.includes("小时")
-        ? form.description.replace(/\d+\s*小时/, `${form.params.duration} 小时`)
-        : form.description;
-    }
-  }
+  if (!drawer.tag) return;
+  Object.assign(drawer.tag, {
+    name: form.system ? drawer.tag.name : form.name,
+    params: form.params,
+    description: form.description,
+    updatedAt: "09-08 18:30",
+    updatedBy: "运营小王",
+  });
   segmentState.drawer = null;
   showToast("保存成功");
   renderApp();
@@ -416,9 +403,6 @@ function onTagLibClick(e) {
   if (act === "reset") {
     segmentState.tagFilters = { q: "", status: "" };
     renderApp();
-  } else if (act === "create") {
-    segmentState.drawer = { mode: "create", form: blankTagForm(), dirty: false };
-    renderApp();
   } else if (act === "edit") {
     const tag = tagById(id);
     segmentState.drawer = {
@@ -450,14 +434,66 @@ function onTagLibKeydown(e) {
   renderApp();
 }
 
+function packCreators() {
+  const names = [];
+  segmentState.packs.forEach((pack) => {
+    if (pack.createdBy && !names.includes(pack.createdBy)) names.push(pack.createdBy);
+  });
+  return names;
+}
+
+function nextPackNo() {
+  const nums = segmentState.packs.map((pack) => Number(String(pack.no || "").replace(/\D/g, "")) || 0);
+  const next = Math.max(0, ...nums) + 1;
+  return `QP${String(next).padStart(4, "0")}`;
+}
+
 function filteredPacks() {
   const q = segmentState.packSearch.trim().toLowerCase();
-  if (!q) return segmentState.packs;
-  return segmentState.packs.filter((pack) => pack.name.toLowerCase().includes(q));
+  return segmentState.packs.filter((pack) => {
+    if (segmentState.packStatus === "enabled" && !pack.enabled) return false;
+    if (segmentState.packStatus === "disabled" && pack.enabled) return false;
+    if (segmentState.packCreator && pack.createdBy !== segmentState.packCreator) return false;
+    if (!q) return true;
+    return [pack.name, pack.code, pack.no, pack.desc].some((text) => String(text || "").toLowerCase().includes(q));
+  });
 }
 
 function selectedPack() {
   return packById(segmentState.selectedPackId);
+}
+
+function blankCreatePack() {
+  return {
+    name: "",
+    desc: "",
+    enabled: false,
+    includeMode: "and",
+    includes: [],
+    excludes: [],
+    countries: [],
+    devices: [],
+    templatePick: "",
+    estimate: { include: 0, afterExclude: 0, total: 0 },
+  };
+}
+
+function packFromEvent(e) {
+  if (e && e.target && e.target.closest && e.target.closest("[data-pack-surface='create']")) {
+    return segmentState.createPack;
+  }
+  return selectedPack();
+}
+
+function pickerPack() {
+  const picker = segmentState.picker;
+  if (picker && picker.surface === "create") return segmentState.createPack;
+  return selectedPack();
+}
+
+function touchPack(pack) {
+  if (!pack || pack === segmentState.createPack) return;
+  segmentState.packDirty = true;
 }
 
 function fakeEstimate(pack) {
@@ -472,38 +508,116 @@ function fakeEstimate(pack) {
 
 function ensurePackExtras(pack) {
   if (!pack.countries) pack.countries = [];
-  if (!pack.amountRange) pack.amountRange = {};
-  if (!pack.returnDays) pack.returnDays = {};
+  if (!Array.isArray(pack.devices)) pack.devices = [];
+  if (!Array.isArray(pack.includes)) pack.includes = [];
+  if (!Array.isArray(pack.excludes)) pack.excludes = [];
 }
 
-function renderTagRow(kind, id, index) {
+function condSelect(name, value, options, kind, index, field) {
+  return `<select class="input" data-cond="${field}" data-kind="${kind}" data-index="${index}">
+    ${options
+      .map((item) => `<option value="${item.value}" ${value === item.value ? "selected" : ""}>${item.label}</option>`)
+      .join("")}
+  </select>`;
+}
+
+function renderCondFields(tag, cond, kind, index, surface) {
+  if (!tag || !cond) return "";
+  const compareDays = [
+    { value: "lte", label: "不超过" },
+    { value: "gt", label: "超过" },
+  ];
+  const compareNum = [
+    { value: "gt", label: "大于" },
+    { value: "gte", label: "大于等于" },
+    { value: "lt", label: "小于" },
+    { value: "lte", label: "小于等于" },
+    { value: "eq", label: "等于" },
+    { value: "between", label: "区间" },
+  ];
+  const windows = [
+    { value: "24h", label: "近 24 小时" },
+    { value: "7d", label: "近 7 日" },
+    { value: "30d", label: "近 30 日" },
+    { value: "all", label: "累计" },
+    { value: "nd", label: "最近 N 日" },
+  ];
+  if (tag.kind === "enum") {
+    return `<div class="cond-params"><span>等于</span>${condSelect("value", cond.value, tag.options || [], kind, index, "value")}</div>`;
+  }
+  if (tag.kind === "latch") {
+    return `<div class="cond-params">
+      <label class="fee-radio"><input type="radio" name="latch-${surface || "edit"}-${kind}-${index}" data-cond="latch" data-kind="${kind}" data-index="${index}" value="yes" ${cond.latch !== "no" ? "checked" : ""} /> 明确是</label>
+      <label class="fee-radio"><input type="radio" name="latch-${surface || "edit"}-${kind}-${index}" data-cond="latch" data-kind="${kind}" data-index="${index}" value="no" ${cond.latch === "no" ? "checked" : ""} /> 明确否</label>
+      <span class="field-hint">未知不能当成否</span>
+    </div>`;
+  }
+  if (tag.kind === "time") {
+    return `<div class="cond-params">
+      <span>${escapeHtml(tag.prompt || "距今")}</span>
+      ${condSelect("compare", cond.compare || "lte", compareDays, kind, index, "compare")}
+      <input class="input narrow" data-cond="amount" data-kind="${kind}" data-index="${index}" value="${escapeHtml(cond.amount)}" />
+      <span>日</span>
+    </div>`;
+  }
+  if (tag.kind === "balance") {
+    const between = cond.compare === "between";
+    return `<div class="cond-params">
+      ${condSelect("compare", cond.compare || "gte", compareNum, kind, index, "compare")}
+      <input class="input narrow" data-cond="amount" data-kind="${kind}" data-index="${index}" value="${escapeHtml(cond.amount)}" />
+      ${between ? `<span>至</span><input class="input narrow" data-cond="amount2" data-kind="${kind}" data-index="${index}" value="${escapeHtml(cond.amount2)}" />` : ""}
+      <span>个</span>
+    </div>`;
+  }
+  if (tag.kind === "watch" || tag.kind === "pay") {
+    const between = cond.compare === "between";
+    const scope =
+      tag.kind === "watch"
+        ? condSelect(
+            "scope",
+            cond.scope,
+            [
+              { value: "", label: "统计范围" },
+              { value: "trial", label: "试看" },
+              { value: "full", label: "正片" },
+              { value: "all", label: "全部" },
+            ],
+            kind,
+            index,
+            "scope",
+          )
+        : condSelect(
+            "product",
+            cond.product,
+            [
+              { value: "", label: "产品线（必选）" },
+              { value: "sub", label: "仅订阅" },
+              { value: "coin", label: "仅金币" },
+              { value: "both", label: "订阅与金币合计" },
+            ],
+            kind,
+            index,
+            "product",
+          );
+    return `<div class="cond-params">
+      ${scope}
+      ${condSelect("window", cond.window || "all", windows, kind, index, "window")}
+      ${cond.window === "nd" ? `<input class="input narrow" data-cond="windowDays" data-kind="${kind}" data-index="${index}" value="${escapeHtml(cond.windowDays)}" placeholder="N" /><span>日，最多 180</span>` : ""}
+      ${condSelect("compare", cond.compare || "gt", compareNum, kind, index, "compare")}
+      <input class="input narrow" data-cond="amount" data-kind="${kind}" data-index="${index}" value="${escapeHtml(cond.amount)}" />
+      ${between ? `<span>至</span><input class="input narrow" data-cond="amount2" data-kind="${kind}" data-index="${index}" value="${escapeHtml(cond.amount2)}" />` : ""}
+      <span>${tag.kind === "watch" ? "秒" : "元"}</span>
+    </div>`;
+  }
+  return "";
+}
+
+function renderTagRow(kind, item, index, surface) {
+  const id = condTagId(item);
   const tag = tagById(id);
   const missing = !tag || tag.status !== "enabled";
-  const label = tag ? `${tag.name}` : "标签已失效";
-  const pack = selectedPack();
-  const recharge = isRechargeTag(tag);
-  const returning = isReturningTag(tag);
-  const range = (pack && pack.amountRange && pack.amountRange[id]) || { min: "", max: "" };
-  const days = (pack && pack.returnDays && pack.returnDays[id]) || "";
-  const amountHtml = recharge
-    ? `<div class="amount-range">
-        <span class="amount-label">累计充值金额</span>
-        <input class="input narrow" data-amount="min" data-tag="${id}" value="${escapeHtml(range.min)}" placeholder="最小" />
-        <span class="amount-op">&lt; 累计金额 ≤</span>
-        <input class="input narrow" data-amount="max" data-tag="${id}" value="${escapeHtml(range.max)}" placeholder="最大" />
-        <span class="field-hint">不包含最小值，包含最大值；留空表示不限</span>
-      </div>`
-    : "";
-  const returnHtml = returning
-    ? `<div class="amount-range">
-        <span class="amount-label">回归条件</span>
-        <input class="input narrow" data-return-days data-tag="${id}" value="${escapeHtml(days)}" placeholder="7" />
-        <span>天未活跃</span>
-        <button type="button" class="btn" data-act="set-return-days" data-tag="${id}" data-days="7">7天</button>
-        <button type="button" class="btn" data-act="set-return-days" data-tag="${id}" data-days="15">15天</button>
-        <span class="field-hint">数字可自由填写，如 7 天未活跃、15 天未活跃</span>
-      </div>`
-    : "";
+  const label = tag ? tag.name : "标签已失效";
+  const cond = item && typeof item === "object" ? item : { tagId: id };
   return `
     <div class="cond-block">
       <div class="cond-row">
@@ -513,8 +627,7 @@ function renderTagRow(kind, id, index) {
         ${tag ? `<button type="button" class="link" data-act="open-tag" data-id="${tag.id}">查看</button>` : ""}
         <button type="button" class="link" data-act="del-cond" data-kind="${kind}" data-index="${index}">删除</button>
       </div>
-      ${amountHtml}
-      ${returnHtml}
+      ${renderCondFields(tag, cond, kind, index, surface)}
     </div>
   `;
 }
@@ -546,8 +659,8 @@ function renderCountryField(pack) {
     })
     .join("");
   return `
-    <div class="label" style="margin-top:16px">国家</div>
-    <p class="filter-hint">可输入 ISO 两位代码（如 US）或搜索中文名。不选表示不限国家。</p>
+    <div class="label" style="margin-top:16px">当次请求地区</div>
+    <p class="filter-hint">不是用户标签。不选表示不限地区。选出的地区表示当次请求需在这些地区可售。</p>
     <div class="country-box">
       <div class="country-chips">${chips || ""}</div>
       <input class="input" data-country-q placeholder="输入 US / 美国 后回车或点选" value="${escapeHtml(segmentState.countryQuery)}" autocomplete="off" />
@@ -556,14 +669,37 @@ function renderCountryField(pack) {
   `;
 }
 
+const DEVICE_OPTIONS = [
+  { id: "android", label: "安卓" },
+  { id: "ios", label: "苹果" },
+  { id: "web", label: "Web" },
+  { id: "h5", label: "H5" },
+];
+
+function renderDeviceField(pack) {
+  const selected = new Set(pack.devices || []);
+  const options = DEVICE_OPTIONS.map(
+    (item) => `
+      <label>
+        <input type="checkbox" data-device="${item.id}" ${selected.has(item.id) ? "checked" : ""} />
+        ${item.label}
+      </label>`,
+  ).join("");
+  return `
+    <div class="label" style="margin-top:16px">用户设备</div>
+    <p class="filter-hint">不是用户标签。不选表示不限设备。选出的设备表示当次请求须来自这些端。</p>
+    <div class="device-options">${options}</div>
+  `;
+}
+
 function pickerOccupiedIds() {
   const picker = segmentState.picker;
   const occupied = new Set((picker && picker.selected) || []);
-  const pack = selectedPack();
+  const pack = pickerPack();
   if (pack && picker && picker.kind) {
-    (pack[picker.kind] || []).forEach((id, index) => {
+    (pack[picker.kind] || []).forEach((item, index) => {
       if (picker.index >= 0 && index === picker.index) return;
-      occupied.add(id);
+      occupied.add(condTagId(item));
     });
   }
   return [...occupied];
@@ -575,13 +711,7 @@ function pickerLockReason(tag) {
   if (selected.includes(tag.id)) return "";
   const occupiedIds = pickerOccupiedIds();
   if (occupiedIds.includes(tag.id)) return "该标签已在条件中";
-  const group = tagMutexGroup(tag);
-  if (!group) return "";
-  const conflict = occupiedIds
-    .map(tagById)
-    .filter(Boolean)
-    .find((item) => item.id !== tag.id && tagMutexGroup(item) === group);
-  return conflict ? `已选择「${conflict.name}」，与当前标签互斥` : "";
+  return "";
 }
 
 function pickerOptionHtml(tag) {
@@ -608,15 +738,299 @@ function filteredPickerTags() {
 }
 
 function renderPickerOptionsHtml() {
-  const options = filteredPickerTags()
-    .map((tag) => pickerOptionHtml(tag))
+  const tags = filteredPickerTags();
+  if (!tags.length) return '<div class="empty-inline">没有可选项，请先到标签库启用标签</div>';
+  const groups = [];
+  tags.forEach((tag) => {
+    const name = tag.group || "其他";
+    let group = groups.find((item) => item.name === name);
+    if (!group) {
+      group = { name, tags: [] };
+      groups.push(group);
+    }
+    group.tags.push(tag);
+  });
+  return groups
+    .map(
+      (group) => `
+        <section class="picker-group">
+          <div class="picker-group-title">${escapeHtml(group.name)}</div>
+          <div class="picker-group-grid">${group.tags.map((tag) => pickerOptionHtml(tag)).join("")}</div>
+        </section>`,
+    )
     .join("");
-  return options || '<div class="empty-inline">没有可选项，请先到标签库启用标签</div>';
 }
 
 function refreshPickerList(root) {
   const list = (root || document).querySelector(".add-list");
   if (list) list.innerHTML = renderPickerOptionsHtml();
+}
+
+function renderPackSections(pack, surface) {
+  ensurePackExtras(pack);
+  const est = pack.estimate || { include: 0, afterExclude: 0, total: 0 };
+  const templatePick = surface === "create" ? pack.templatePick || "" : segmentState.templatePick;
+  return `
+    <section class="form-sec">
+      <h4>1. 包信息</h4>
+      <div class="form-grid">
+        <label class="span-2">人群包名称 *
+          <input class="input" data-pack="name" value="${escapeHtml(pack.name)}" placeholder="例如：未付费新人" />
+        </label>
+        <label class="span-2">说明
+          <textarea class="input" rows="2" data-pack="desc" placeholder="这个人群包用来圈选谁">${escapeHtml(pack.desc)}</textarea>
+        </label>
+      </div>
+    </section>
+    <section class="form-sec">
+      <h4>2. 圈选条件</h4>
+      <p class="filter-hint">标签只登记口径。天数、秒数、金额和窗口在下面填。套用模板会覆盖当前条件，并写入合规否决：年龄验证为通过、账号状态为正常。当次请求地区可售始终生效，不是用户标签，在下面单独限售。</p>
+      <div class="cond-params">
+        <select class="input" data-template-pick>
+          <option value="">选择圈选模板</option>
+          ${listSegmentTemplates()
+            .map((item) => `<option value="${item.key}" ${templatePick === item.key ? "selected" : ""}>${escapeHtml(item.label)}</option>`)
+            .join("")}
+        </select>
+        <button type="button" class="btn" data-act="apply-template">套用模板</button>
+      </div>
+      <div class="label">包含区</div>
+      <div class="radios">
+        <label><input type="radio" name="includeMode-${surface}" data-pack="includeMode" value="or" ${pack.includeMode === "or" ? "checked" : ""} /> 满足任意（OR）</label>
+        <label><input type="radio" name="includeMode-${surface}" data-pack="includeMode" value="and" ${pack.includeMode === "and" ? "checked" : ""} /> 同时满足（AND）</label>
+      </div>
+      ${pack.includes.map((id, index) => renderTagRow("includes", id, index, surface)).join("") || '<div class="empty-inline">还没有包含条件</div>'}
+      <button type="button" class="btn" data-act="add-cond" data-kind="includes">添加标签</button>
+      ${renderCountryField(pack)}
+      ${renderDeviceField(pack)}
+      <div class="label" style="margin-top:16px">排除区</div>
+      <p class="filter-hint">命中排除中任一标签的用户不进包</p>
+      ${pack.excludes.map((id, index) => renderTagRow("excludes", id, index, surface)).join("") || '<div class="empty-inline">无排除标签</div>'}
+      <button type="button" class="btn" data-act="add-cond" data-kind="excludes">添加排除标签</button>
+    </section>
+    <section class="form-sec">
+      <h4>3. 预估</h4>
+      <div class="estimate-bar">
+        <div class="metric on">
+          <div class="muted">符合条件用户数</div>
+          <b>${est.total.toLocaleString()}</b>
+        </div>
+        <button type="button" class="btn" data-act="refresh-est">刷新预估</button>
+        <button type="button" class="btn btn-primary" data-act="download-users">用户列表下载</button>
+      </div>
+    </section>
+  `;
+}
+
+function compareLabel(kind, value) {
+  if (kind === "time") return value === "gt" ? "超过" : "不超过";
+  const map = {
+    gt: "大于",
+    gte: "大于等于",
+    lt: "小于",
+    lte: "小于等于",
+    eq: "等于",
+    between: "区间",
+  };
+  return map[value] || "—";
+}
+
+function windowLabel(item) {
+  const map = {
+    "24h": "近 24 小时",
+    "7d": "近 7 日",
+    "30d": "近 30 日",
+    all: "累计",
+  };
+  if (item.window === "nd") return `最近 ${item.windowDays || "N"} 日`;
+  return map[item.window] || "—";
+}
+
+function condSummary(item) {
+  const tag = tagById(condTagId(item));
+  if (!tag || !item || typeof item !== "object") return "标签已失效";
+  if (tag.kind === "enum") {
+    const opt = (tag.options || []).find((option) => option.value === item.value);
+    return `等于 ${opt ? opt.label : item.value || "—"}`;
+  }
+  if (tag.kind === "latch") return item.latch === "no" ? "明确否" : "明确是";
+  if (tag.kind === "time") return `${tag.prompt || "距今"} ${compareLabel("time", item.compare)} ${item.amount || "—"} 日`;
+  if (tag.kind === "balance") {
+    if (item.compare === "between") return `区间 ${item.amount || "—"} 至 ${item.amount2 || "—"} 个`;
+    return `${compareLabel("balance", item.compare)} ${item.amount || "—"} 个`;
+  }
+  if (tag.kind === "watch" || tag.kind === "pay") {
+    const head =
+      tag.kind === "watch"
+        ? { trial: "试看", full: "正片", all: "全部" }[item.scope] || "未选范围"
+        : { sub: "仅订阅", coin: "仅金币", both: "订阅与金币合计" }[item.product] || "未选产品线";
+    const unit = tag.kind === "watch" ? "秒" : "元";
+    const amount = item.compare === "between" ? `${item.amount || "—"} 至 ${item.amount2 || "—"}` : item.amount || "—";
+    return `${head}，${windowLabel(item)}，${compareLabel(tag.kind, item.compare)} ${amount} ${unit}`;
+  }
+  return "—";
+}
+
+function renderCondSummaryList(list) {
+  if (!list || !list.length) return '<div class="empty-inline">无</div>';
+  return list
+    .map((item) => {
+      const tag = tagById(condTagId(item));
+      return `
+        <div class="cond-block">
+          <div class="cell-title">${escapeHtml(tag ? tag.name : "标签已失效")}</div>
+          <div class="cond-summary">${escapeHtml(condSummary(item))}</div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderPackDetailDialog() {
+  const pack = packById(segmentState.detailPackId);
+  if (!pack) return "";
+  ensurePackExtras(pack);
+  const countries = (pack.countries || []).map((code) => {
+    const item = countryByCode(code);
+    return `${item.code} ${item.name}`;
+  });
+  const devices = DEVICE_OPTIONS.filter((item) => (pack.devices || []).includes(item.id)).map((item) => item.label);
+  const est = pack.estimate || { total: 0 };
+  return `
+    <div class="mask">
+      <div class="dialog create-pack-dialog">
+        <div class="dialog-title">人群包详情</div>
+        <div class="dialog-body">
+          <div class="detail-kv">
+            <span>名称</span><b>${escapeHtml(pack.name)}</b>
+            <span>code</span><b>${escapeHtml(pack.code || "—")}</b>
+            <span>编号</span><b>${escapeHtml(pack.no || "—")}</b>
+            <span>状态</span><b>${pack.enabled ? "已启用" : "已停用"}</b>
+            <span>创建者</span><b>${escapeHtml(pack.createdBy || "—")}</b>
+            <span>引用</span><b>${pack.bindCount > 0 ? pack.bindCount : "未被绑定"}</b>
+            <span>更新</span><b>${escapeHtml(pack.updatedAt || "—")}</b>
+            <span>说明</span><b>${escapeHtml(pack.desc || "—")}</b>
+          </div>
+          <h4>包含区 · ${pack.includeMode === "or" ? "满足任意" : "同时满足"}</h4>
+          ${renderCondSummaryList(pack.includes)}
+          <h4>当次请求地区</h4>
+          <p>${countries.length ? escapeHtml(countries.join("、")) : "不限地区"}</p>
+          <h4>用户设备</h4>
+          <p>${devices.length ? escapeHtml(devices.join("、")) : "不限设备"}</p>
+          <h4>排除区</h4>
+          ${renderCondSummaryList(pack.excludes)}
+          <h4>预估</h4>
+          <p>符合条件用户数 ${Number(est.total || 0).toLocaleString()}</p>
+        </div>
+        <div class="dialog-foot">
+          <button type="button" class="btn" data-act="close-detail">关闭</button>
+          <button type="button" class="btn btn-primary" data-act="detail-to-edit">编辑</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function openPackEditor(id) {
+  const pack = packById(id);
+  if (!pack) return;
+  const draft = clone(pack);
+  draft.editingId = pack.id;
+  draft.templatePick = "";
+  ensurePackExtras(draft);
+  segmentState.countryQuery = "";
+  segmentState.countryOpen = false;
+  segmentState.detailPackId = null;
+  segmentState.createPack = draft;
+  renderApp();
+}
+
+function renderCreatePackDialog() {
+  const pack = segmentState.createPack;
+  if (!pack || !Array.isArray(pack.includes)) return "";
+  const name = (pack.name || "").trim();
+  const editing = Boolean(pack.editingId);
+  return `
+    <div class="mask">
+      <div class="dialog create-pack-dialog" data-pack-surface="create">
+        <div class="dialog-title">${editing ? "编辑人群包" : "新建人群包"}</div>
+        <div class="dialog-body create-pack-form">
+          <p class="filter-hint">${editing ? "保存后更新这条人群包。取消不保留本次修改。" : "保存后才会出现在列表。取消或关闭不会留下草稿。"}</p>
+          <label class="enable-switch ${pack.enabled ? "on" : ""}">
+            <input type="checkbox" data-pack="enabled" ${pack.enabled ? "checked" : ""} />
+            <span class="enable-track"></span>
+            <span class="enable-text">${pack.enabled ? "已启用" : "未启用"}</span>
+          </label>
+          ${renderPackSections(pack, "create")}
+        </div>
+        <div class="dialog-foot">
+          <button type="button" class="btn" data-act="close-create-pack">取消</button>
+          <button type="button" class="btn btn-primary" data-act="confirm-create-pack" ${name ? "" : "disabled"}>保存</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function commitCreatePack() {
+  const draft = segmentState.createPack;
+  if (!draft) return;
+  const name = (draft.name || "").trim();
+  if (!name) {
+    showToast("请填写人群包名称", "error");
+    return;
+  }
+  ensurePackExtras(draft);
+  if (draft.editingId) {
+    const current = packById(draft.editingId);
+    if (!current) return;
+    current.name = name;
+    current.desc = (draft.desc || "").trim();
+    current.enabled = Boolean(draft.enabled);
+    current.includeMode = draft.includeMode || "and";
+    current.includes = draft.includes;
+    current.excludes = draft.excludes;
+    current.countries = draft.countries || [];
+    current.devices = draft.devices || [];
+    current.estimate = draft.estimate || current.estimate;
+    current.updatedAt = "刚刚";
+    segmentState.createPack = null;
+    segmentState.packDirty = false;
+    segmentState.countryOpen = false;
+    segmentState.countryQuery = "";
+    showToast("已保存");
+    renderApp();
+    return;
+  }
+  const saved = {
+    id: `pack_${Date.now()}`,
+    no: nextPackNo(),
+    name,
+    code: `seg_${Date.now().toString(36)}`,
+    createdBy: "运营小王",
+    desc: (draft.desc || "").trim(),
+    enabled: Boolean(draft.enabled),
+    includeMode: draft.includeMode || "and",
+    includes: draft.includes,
+    excludes: draft.excludes,
+    countries: draft.countries || [],
+    devices: draft.devices || [],
+    bindCount: 0,
+    updatedAt: "刚刚",
+    estimate: draft.estimate || { include: 0, afterExclude: 0, total: 0 },
+  };
+  const go = () => {
+    segmentState.packs.unshift(saved);
+    segmentState.selectedPackId = saved.id;
+    segmentState.packDirty = false;
+    segmentState.createPack = null;
+    segmentState.countryOpen = false;
+    segmentState.countryQuery = "";
+    showToast("已保存");
+    renderApp();
+  };
+  if (segmentState.packDirty) confirmLeaveIfDirty(go);
+  else go();
 }
 
 function renderPicker() {
@@ -641,102 +1055,88 @@ function renderPicker() {
 
 function renderAudiencePage() {
   const packs = filteredPacks();
-  const pack = selectedPack();
-  const list = packs
+  const rows = packs
     .map((item) => {
-      const bind = item.bindCount > 0 ? `引用 ${item.bindCount}` : "未被绑定";
+      const desc = item.desc || "";
+      const summary = desc.length > 40 ? `${desc.slice(0, 40)}…` : desc;
+      const bind = item.bindCount > 0 ? String(item.bindCount) : "未被绑定";
+      const toggleLabel = item.enabled ? "停用" : "启用";
+      const status = item.enabled ? "已启用" : '<span class="pill red">已停用</span>';
       return `
-        <button type="button" class="scene-item${item.id === segmentState.selectedPackId ? " active" : ""}" data-act="select-pack" data-id="${item.id}">
-          <div class="scene-name">${escapeHtml(item.name)}</div>
-          <div class="scene-meta">${item.enabled ? "已启用" : "已停用"} · ${bind}</div>
-          <div class="scene-meta">${item.updatedAt}</div>
-        </button>
+        <tr class="data-row">
+          <td>${escapeHtml(item.no || "—")}</td>
+          <td>
+            <div class="cell-title">${escapeHtml(item.name)}</div>
+            <code class="cell-code">${escapeHtml(item.code || "")}</code>
+          </td>
+          <td><span class="truncate" title="${escapeHtml(desc)}">${escapeHtml(summary) || "—"}</span></td>
+          <td>${status}</td>
+          <td>${escapeHtml(item.createdBy || "—")}</td>
+          <td>${bind}</td>
+          <td>${escapeHtml(item.updatedAt || "—")}</td>
+          <td class="ops">
+            <button type="button" class="link" data-act="open-detail" data-id="${item.id}">详情</button>
+            <button type="button" class="link" data-act="edit-pack" data-id="${item.id}">编辑</button>
+            <button type="button" class="link" data-act="toggle-pack" data-id="${item.id}">${toggleLabel}</button>
+            <button type="button" class="link danger" data-act="delete-pack" data-id="${item.id}">删除</button>
+          </td>
+        </tr>
       `;
     })
     .join("");
 
-  let detail = `
-    <div class="empty pack-empty">
-      <div class="empty-art"></div>
-      <div>选择左侧人群包，或新建</div>
-    </div>
-  `;
-
-  if (pack) {
-    ensurePackExtras(pack);
-    const est = pack.estimate;
-    detail = `
-      <div class="pack-editor">
-        <div class="pack-toolbar">
-          <h2>${escapeHtml(pack.name)}</h2>
-          <label class="enable-switch ${pack.enabled ? "on" : ""}">
-            <input type="checkbox" data-pack="enabled" ${pack.enabled ? "checked" : ""} />
-            <span class="enable-track"></span>
-            <span class="enable-text">${pack.enabled ? "已启用" : "未启用"}</span>
-          </label>
-        </div>
-        <p class="filter-hint" style="margin:0 0 12px">停用后：已经引用该包的业务可继续使用；新的业务（金币包、任务等再去勾选时）不能再引用已停用的人群包。</p>
-        <section class="form-sec">
-          <h4>1. 包信息</h4>
-          <div class="form-grid">
-            <label class="span-2">人群包名称 *
-              <input class="input" data-pack="name" value="${escapeHtml(pack.name)}" />
-            </label>
-            <label class="span-2">说明
-              <textarea class="input" rows="2" data-pack="desc">${escapeHtml(pack.desc)}</textarea>
-            </label>
-          </div>
-        </section>
-        <section class="form-sec">
-          <h4>2. 圈选条件</h4>
-          <div class="label">包含区</div>
-          <div class="radios">
-            <label><input type="radio" name="includeMode" data-pack="includeMode" value="or" ${pack.includeMode === "or" ? "checked" : ""} /> 满足任意（OR）</label>
-            <label><input type="radio" name="includeMode" data-pack="includeMode" value="and" ${pack.includeMode === "and" ? "checked" : ""} /> 同时满足（AND）</label>
-          </div>
-          ${pack.includes.map((id, index) => renderTagRow("includes", id, index)).join("") || '<div class="empty-inline">还没有包含条件</div>'}
-          <button type="button" class="btn" data-act="add-cond" data-kind="includes">添加标签</button>
-          ${renderCountryField(pack)}
-          <div class="label" style="margin-top:16px">排除区</div>
-          <p class="filter-hint">命中排除中任一标签的用户不进包</p>
-          ${pack.excludes.map((id, index) => renderTagRow("excludes", id, index)).join("") || '<div class="empty-inline">无排除标签</div>'}
-          <button type="button" class="btn" data-act="add-cond" data-kind="excludes">添加排除标签</button>
-        </section>
-        <section class="form-sec">
-          <h4>3. 预估</h4>
-          <div class="estimate-bar">
-            <div class="metric on">
-              <div class="muted">符合条件用户数</div>
-              <b>${est.total.toLocaleString()}</b>
-            </div>
-            <button type="button" class="btn" data-act="refresh-est">刷新预估</button>
-            <button type="button" class="btn btn-primary" data-act="download-users">用户列表下载</button>
-          </div>
-        </section>
-        <div class="pack-foot">
-          ${segmentState.packDirty ? '<span class="unsaved">有未保存更改</span>' : ""}
-          <button type="button" class="btn btn-danger" data-act="delete-pack">删除</button>
-          <button type="button" class="btn btn-primary" data-act="save-pack">保存</button>
-        </div>
-      </div>
-    `;
-  }
-
   return `
     ${renderTopbar("用户圈选")}
-    <div class="page scene-page">
-      <aside class="scene-list" style="width:280px">
-        <input class="input" data-pack-search placeholder="搜索包名" value="${escapeHtml(segmentState.packSearch)}" />
-        <button type="button" class="btn btn-primary btn-block" data-act="create-pack">新建人群包</button>
-        <div class="group-list">${list || '<div class="empty-inline">暂无人群包</div>'}</div>
-      </aside>
-      <section class="scene-detail">${detail}</section>
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <h1>用户圈选</h1>
+          <p>已保存的人群包。点详情查看配置。</p>
+        </div>
+        <div class="page-head-actions">
+          <button type="button" class="btn btn-primary" data-act="create-pack">新建人群包</button>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <input class="input" data-pack-search placeholder="搜索名称 / code / 说明" value="${escapeHtml(segmentState.packSearch)}" />
+        <select class="input" data-pack-status>
+          <option value="">全部状态</option>
+          <option value="enabled" ${segmentState.packStatus === "enabled" ? "selected" : ""}>已启用</option>
+          <option value="disabled" ${segmentState.packStatus === "disabled" ? "selected" : ""}>已停用</option>
+        </select>
+        <select class="input" data-pack-creator>
+          <option value="">全部创建者</option>
+          ${packCreators()
+            .map((name) => `<option value="${escapeHtml(name)}" ${segmentState.packCreator === name ? "selected" : ""}>${escapeHtml(name)}</option>`)
+            .join("")}
+        </select>
+        <button type="button" class="btn-text" data-act="reset-packs">重置</button>
+      </div>
+      <div class="table-card">
+        ${
+          packs.length
+            ? `<table class="data-table">
+                <thead>
+                  <tr>
+                    <th>编号</th><th>人群包</th><th>说明</th><th>状态</th>
+                    <th>创建者</th><th>引用</th><th>更新</th><th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+              <div class="pager">共 ${packs.length} 条</div>`
+            : `<div class="empty">
+                <div class="empty-art"></div>
+                <div>还没有人群包</div>
+              </div>`
+        }
+      </div>
     </div>
   `;
 }
 
-function addCountry(code) {
-  const pack = selectedPack();
+function addCountry(code, pack) {
+  if (!pack) pack = selectedPack();
   if (!pack) return;
   ensurePackExtras(pack);
   const upper = String(code || "").trim().toUpperCase();
@@ -747,15 +1147,14 @@ function addCountry(code) {
   if (!pack.countries.includes(upper)) pack.countries.push(upper);
   segmentState.countryQuery = "";
   segmentState.countryOpen = false;
-  segmentState.packDirty = true;
+  touchPack(pack);
   renderApp();
 }
 
 function onAudienceClick(e) {
   if (!e.target.closest(".country-box") && segmentState.countryOpen) {
     segmentState.countryOpen = false;
-    const drop = document.querySelector(".country-drop");
-    if (drop) drop.classList.remove("open");
+    document.querySelectorAll(".country-drop").forEach((drop) => drop.classList.remove("open"));
   }
   const btn = e.target.closest("[data-act]");
   if (!btn) return;
@@ -768,78 +1167,103 @@ function onAudienceClick(e) {
     };
     if (segmentState.packDirty) confirmLeaveIfDirty(next);
     else next();
+  } else if (act === "open-detail") {
+    segmentState.detailPackId = btn.dataset.id;
+    renderApp();
+  } else if (act === "edit-pack") {
+    openPackEditor(btn.dataset.id);
+  } else if (act === "toggle-pack") {
+    const pack = packById(btn.dataset.id);
+    if (!pack) return;
+    pack.enabled = !pack.enabled;
+    pack.updatedAt = "刚刚";
+    showToast(pack.enabled ? "已启用" : "已停用");
+    renderApp();
+  } else if (act === "reset-packs") {
+    segmentState.packSearch = "";
+    segmentState.packStatus = "";
+    segmentState.packCreator = "";
+    renderApp();
   } else if (act === "create-pack") {
-    const go = () => {
-      const id = `pack_${Date.now()}`;
-      segmentState.packs.unshift({
-        id,
-        name: "未命名人群包",
-        code: `seg_${Date.now().toString(36)}`,
-        desc: "",
-        enabled: false,
-        includeMode: "or",
-          includes: [],
-          excludes: [],
-          countries: [],
-          amountRange: {},
-          returnDays: {},
-          bindCount: 0,
-        updatedAt: "刚刚",
-        estimate: { include: 0, afterExclude: 0, total: 0 },
-      });
-      segmentState.selectedPackId = id;
-      segmentState.packDirty = true;
-      renderApp();
-    };
-    if (segmentState.packDirty) confirmLeaveIfDirty(go);
-    else go();
+    segmentState.countryQuery = "";
+    segmentState.countryOpen = false;
+    segmentState.createPack = blankCreatePack();
+    renderApp();
   } else if (act === "add-cond") {
-    segmentState.picker = { kind: btn.dataset.kind, index: -1, q: "", selected: [] };
+    segmentState.picker = {
+      kind: btn.dataset.kind,
+      index: -1,
+      q: "",
+      selected: [],
+      surface: e.target.closest("[data-pack-surface='create']") ? "create" : "edit",
+    };
     renderApp();
   } else if (act === "open-picker") {
-    const pack = selectedPack();
+    const pack = packFromEvent(e);
     const current = pack ? pack[btn.dataset.kind][Number(btn.dataset.index)] : "";
     segmentState.picker = {
       kind: btn.dataset.kind,
       index: Number(btn.dataset.index),
       q: "",
-      selected: current ? [current] : [],
+      selected: current ? [condTagId(current)] : [],
+      surface: e.target.closest("[data-pack-surface='create']") ? "create" : "edit",
     };
     renderApp();
   } else if (act === "del-cond") {
-    const pack = selectedPack();
-    const removed = pack[btn.dataset.kind][Number(btn.dataset.index)];
+    const pack = packFromEvent(e);
     pack[btn.dataset.kind].splice(Number(btn.dataset.index), 1);
-    if (pack.amountRange) delete pack.amountRange[removed];
-    if (pack.returnDays) delete pack.returnDays[removed];
     fakeEstimate(pack);
-    segmentState.packDirty = true;
+    touchPack(pack);
     renderApp();
+  } else if (act === "apply-template") {
+    const pack = packFromEvent(e);
+    const key = pack === segmentState.createPack ? pack.templatePick : segmentState.templatePick;
+    const tpl = listSegmentTemplates().find((item) => item.key === key);
+    if (!pack || !tpl) {
+      showToast("请先选择圈选模板", "error");
+      return;
+    }
+    const apply = () => {
+      pack.includeMode = "and";
+      pack.includes = clone(tpl.includes);
+      pack.excludes = [];
+      if (!pack.desc) pack.desc = tpl.desc;
+      fakeEstimate(pack);
+      touchPack(pack);
+      showToast(`已套用「${tpl.label}」`);
+      renderApp();
+    };
+    if (pack.includes.length || pack.excludes.length) {
+      showConfirm({
+        title: "套用模板",
+        text: `将用「${tpl.label}」覆盖当前包含和排除条件。`,
+        okText: "覆盖",
+        danger: true,
+        onOk: apply,
+      });
+      return;
+    }
+    apply();
   } else if (act === "pick-country") {
-    addCountry(btn.dataset.code);
+    addCountry(btn.dataset.code, packFromEvent(e));
   } else if (act === "remove-country") {
-    const pack = selectedPack();
+    const pack = packFromEvent(e);
     ensurePackExtras(pack);
     pack.countries = pack.countries.filter((code) => code !== btn.dataset.code);
-    segmentState.packDirty = true;
-    renderApp();
-  } else if (act === "set-return-days") {
-    const pack = selectedPack();
-    ensurePackExtras(pack);
-    pack.returnDays[btn.dataset.tag] = btn.dataset.days;
-    segmentState.packDirty = true;
+    touchPack(pack);
     renderApp();
   } else if (act === "open-tag") {
     navigateTo("user-tag-library", { tagId: btn.dataset.id, openDrawer: true });
   } else if (act === "refresh-est") {
-    const pack = selectedPack();
+    const pack = packFromEvent(e);
     fakeEstimate(pack);
     pack.estimate.total += Math.floor(Math.random() * 80 - 40);
     pack.estimate.afterExclude = pack.estimate.total;
+    touchPack(pack);
     showToast("已刷新预估");
     renderApp();
   } else if (act === "download-users") {
-    const pack = selectedPack();
+    const pack = packFromEvent(e);
     const count = pack.estimate.total;
     if (!count) {
       showToast("当前预估人数为 0，没有可下载用户", "error");
@@ -871,7 +1295,8 @@ function onAudienceClick(e) {
     showToast("保存成功");
     renderApp();
   } else if (act === "delete-pack") {
-    const pack = selectedPack();
+    const pack = packById(btn.dataset.id) || selectedPack();
+    if (!pack) return;
     if (pack.bindCount > 0) {
       showToast("有业务已绑定该包，不能删，先去业务侧解绑", "error");
       return;
@@ -883,7 +1308,10 @@ function onAudienceClick(e) {
       danger: true,
       onOk: () => {
         segmentState.packs = segmentState.packs.filter((item) => item.id !== pack.id);
-        segmentState.selectedPackId = segmentState.packs[0] ? segmentState.packs[0].id : null;
+        if (segmentState.selectedPackId === pack.id) {
+          segmentState.selectedPackId = segmentState.packs[0] ? segmentState.packs[0].id : null;
+        }
+        if (segmentState.detailPackId === pack.id) segmentState.detailPackId = null;
         segmentState.packDirty = false;
         renderApp();
       },
@@ -891,7 +1319,55 @@ function onAudienceClick(e) {
   }
 }
 
+function syncCondField(el) {
+  const pack = el.closest("[data-pack-surface='create']") ? segmentState.createPack : selectedPack();
+  if (!pack || !el.dataset.cond) return;
+  const list = pack[el.dataset.kind];
+  const condItem = list && list[Number(el.dataset.index)];
+  if (!condItem || typeof condItem !== "object") return;
+  condItem[el.dataset.cond] = el.value;
+  touchPack(pack);
+}
+
 function onAudienceChange(e) {
+  const device = e.target.closest("[data-device]");
+  if (device) {
+    const pack = packFromEvent(e);
+    if (!pack) return;
+    ensurePackExtras(pack);
+    const id = device.dataset.device;
+    const set = new Set(pack.devices || []);
+    if (device.checked) set.add(id);
+    else set.delete(id);
+    pack.devices = DEVICE_OPTIONS.map((item) => item.id).filter((item) => set.has(item));
+    touchPack(pack);
+    return;
+  }
+  const packStatus = e.target.closest("[data-pack-status]");
+  if (packStatus) {
+    segmentState.packStatus = packStatus.value;
+    renderApp();
+    return;
+  }
+  const packCreator = e.target.closest("[data-pack-creator]");
+  if (packCreator) {
+    segmentState.packCreator = packCreator.value;
+    renderApp();
+    return;
+  }
+  const templatePick = e.target.closest("[data-template-pick]");
+  if (templatePick) {
+    const pack = packFromEvent(e);
+    if (pack === segmentState.createPack) pack.templatePick = templatePick.value;
+    else segmentState.templatePick = templatePick.value;
+    return;
+  }
+  const condField = e.target.closest("[data-cond]");
+  if (condField) {
+    syncCondField(condField);
+    if (condField.tagName === "SELECT" || condField.type === "radio") renderApp();
+    return;
+  }
   const search = e.target.closest("[data-pack-search]");
   if (search) {
     segmentState.packSearch = search.value;
@@ -900,17 +1376,17 @@ function onAudienceChange(e) {
   }
   const el = e.target.closest("[data-pack]");
   if (!el) return;
-  const pack = selectedPack();
+  const pack = packFromEvent(e);
   if (!pack) return;
   const key = el.dataset.pack;
   if (key === "enabled") {
     pack.enabled = el.checked;
-    segmentState.packDirty = true;
+    touchPack(pack);
     renderApp();
     return;
   }
   pack[key] = el.type === "radio" ? el.value : el.value;
-  segmentState.packDirty = true;
+  touchPack(pack);
   if (key === "includeMode") {
     fakeEstimate(pack);
     renderApp();
@@ -924,14 +1400,13 @@ function onAudienceKeydown(e) {
       e.preventDefault();
       const typed = countryInput.value.trim();
       const matches = filterCountries(typed);
-      if (/^[A-Za-z]{2}$/.test(typed)) addCountry(typed);
-      else if (matches.length === 1) addCountry(matches[0].code);
+      if (/^[A-Za-z]{2}$/.test(typed)) addCountry(typed, packFromEvent(e));
+      else if (matches.length === 1) addCountry(matches[0].code, packFromEvent(e));
       else showToast("请选择列表中的国家，或输入两位 ISO 代码", "error");
     }
     if (e.key === "Escape") {
       segmentState.countryOpen = false;
-      const drop = document.querySelector(".country-drop");
-      if (drop) drop.classList.remove("open");
+      document.querySelectorAll(".country-drop").forEach((drop) => drop.classList.remove("open"));
     }
     return;
   }
@@ -944,7 +1419,7 @@ function onAudienceKeydown(e) {
 function onAudienceInput(e) {
   const countryInput = e.target.closest("[data-country-q]");
   if (countryInput) {
-    const pack = selectedPack();
+    const pack = packFromEvent(e);
     segmentState.countryQuery = countryInput.value;
     segmentState.countryOpen = true;
     const drop = countryInput.parentElement.querySelector(".country-drop");
@@ -954,40 +1429,45 @@ function onAudienceInput(e) {
     }
     return;
   }
-  const amount = e.target.closest("[data-amount]");
-  if (amount) {
-    const pack = selectedPack();
-    if (!pack) return;
-    ensurePackExtras(pack);
-    const tagId = amount.dataset.tag;
-    if (!pack.amountRange[tagId]) pack.amountRange[tagId] = { min: "", max: "" };
-    pack.amountRange[tagId][amount.dataset.amount] = amount.value;
-    segmentState.packDirty = true;
-    return;
-  }
-  const returnDays = e.target.closest("[data-return-days]");
-  if (returnDays) {
-    const pack = selectedPack();
-    if (!pack) return;
-    ensurePackExtras(pack);
-    pack.returnDays[returnDays.dataset.tag] = returnDays.value;
-    segmentState.packDirty = true;
+  const condField = e.target.closest("[data-cond]");
+  if (condField && condField.tagName !== "SELECT" && condField.type !== "radio") {
+    syncCondField(condField);
     return;
   }
   const el = e.target.closest("[data-pack]");
   if (!el || el.dataset.pack === "includeMode") return;
-  const pack = selectedPack();
+  const pack = packFromEvent(e);
   if (!pack) return;
   const key = el.dataset.pack;
   if (key === "enabled") pack.enabled = el.checked;
   else pack[key] = el.value;
-  segmentState.packDirty = true;
+  touchPack(pack);
+  if (pack === segmentState.createPack && key === "name") {
+    const saveBtn = document.querySelector("[data-pack-surface='create'] [data-act='confirm-create-pack']");
+    if (saveBtn) saveBtn.disabled = !(pack.name || "").trim();
+  }
 }
 
 function onOverlayClick(e) {
   const btn = e.target.closest("[data-act]");
   const mask = e.target.classList && e.target.classList.contains("mask") ? e.target : null;
   if (mask && !e.target.closest(".drawer, .dialog")) {
+    if (segmentState.picker) {
+      segmentState.picker = null;
+      renderApp();
+      return;
+    }
+    if (segmentState.detailPackId && !segmentState.createPack) {
+      segmentState.detailPackId = null;
+      renderApp();
+      return;
+    }
+    if (segmentState.createPack) {
+      segmentState.createPack = null;
+      segmentState.countryOpen = false;
+      renderApp();
+      return;
+    }
     if (segmentState.drawer && segmentState.drawer.dirty) {
       confirmLeaveIfDirty(() => {
         closeOverlays();
@@ -1001,6 +1481,21 @@ function onOverlayClick(e) {
   }
   if (!btn) return;
   const act = btn.dataset.act;
+  const createEditorActs = [
+    "add-cond",
+    "open-picker",
+    "del-cond",
+    "apply-template",
+    "pick-country",
+    "remove-country",
+    "open-tag",
+    "refresh-est",
+    "download-users",
+  ];
+  if (e.target.closest("[data-pack-surface='create']") && createEditorActs.includes(act)) {
+    onAudienceClick(e);
+    return;
+  }
   if (act === "close-drawer") {
     if (segmentState.drawer && segmentState.drawer.dirty) {
       confirmLeaveIfDirty(() => {
@@ -1021,6 +1516,16 @@ function onOverlayClick(e) {
     closeOverlays();
     navigateTo("user-tag-segment", { packId: btn.dataset.id });
   }
+  if (act === "close-detail") {
+    segmentState.detailPackId = null;
+    renderApp();
+  }
+  if (act === "detail-to-edit") openPackEditor(segmentState.detailPackId);
+  if (act === "close-create-pack") {
+    segmentState.createPack = null;
+    renderApp();
+  }
+  if (act === "confirm-create-pack") commitCreatePack();
   if (act === "close-picker") {
     segmentState.picker = null;
     renderApp();
@@ -1041,7 +1546,7 @@ function onOverlayClick(e) {
     return;
   }
   if (act === "confirm-pick") {
-    const pack = selectedPack();
+    const pack = pickerPack();
     const picker = segmentState.picker;
     const chosen = ((picker && picker.selected) || []).filter((id) => {
       const tag = tagById(id);
@@ -1053,30 +1558,20 @@ function onOverlayClick(e) {
     }
     if (pack && picker) {
       const list = pack[picker.kind];
+      const fresh = chosen.map((id) => cond(id));
       if (picker.index < 0) {
-        chosen.forEach((id) => {
-          if (!list.includes(id)) list.push(id);
+        fresh.forEach((item) => {
+          if (!list.some((row) => condTagId(row) === item.tagId)) list.push(item);
         });
       } else {
-        const [first, ...rest] = chosen;
+        const [first, ...rest] = fresh;
         list[picker.index] = first;
-        rest.forEach((id) => {
-          if (!list.includes(id)) list.push(id);
+        rest.forEach((item) => {
+          if (!list.some((row) => condTagId(row) === item.tagId)) list.push(item);
         });
       }
       fakeEstimate(pack);
-      segmentState.packDirty = true;
-      chosen.forEach((id) => {
-        const tag = tagById(id);
-        if (isRechargeTag(tag)) {
-          if (!pack.amountRange) pack.amountRange = {};
-          if (!pack.amountRange[id]) pack.amountRange[id] = { min: "", max: "" };
-        }
-        if (isReturningTag(tag)) {
-          if (!pack.returnDays) pack.returnDays = {};
-          if (!pack.returnDays[id]) pack.returnDays[id] = "7";
-        }
-      });
+      touchPack(pack);
     }
     segmentState.picker = null;
     renderApp();
@@ -1087,12 +1582,14 @@ function closeOverlays() {
   segmentState.drawer = null;
   segmentState.refsDrawer = null;
   segmentState.picker = null;
+  segmentState.createPack = null;
+  segmentState.detailPackId = null;
 }
 
 function bindOverlays() {
   const overlay = document.getElementById("overlay-root");
   overlay.innerHTML =
-    renderTagDrawer() + renderRefsDrawer() + renderPicker();
+    renderTagDrawer() + renderRefsDrawer() + renderPackDetailDialog() + renderCreatePackDialog() + renderPicker();
   const hasOverlay = Boolean(
     overlay.querySelector(".mask") || document.getElementById("confirm-modal"),
   );
@@ -1100,6 +1597,27 @@ function bindOverlays() {
   if (!overlay.dataset.bound) {
     overlay.dataset.bound = "1";
     overlay.addEventListener("click", onOverlayClick);
+    overlay.addEventListener("change", (e) => {
+      if (e.target.closest("[data-pack-surface='create']")) onAudienceChange(e);
+    });
+    overlay.addEventListener("input", (e) => {
+      if (e.target.closest("[data-pack-surface='create']")) onAudienceInput(e);
+    });
+    overlay.addEventListener("keydown", (e) => {
+      if (e.target.closest("[data-pack-surface='create']")) onAudienceKeydown(e);
+    });
+    overlay.addEventListener("focusin", (e) => {
+      if (!e.target.closest("[data-pack-surface='create']")) return;
+      const countryInput = e.target.closest("[data-country-q]");
+      if (!countryInput) return;
+      const pack = segmentState.createPack;
+      segmentState.countryOpen = true;
+      const drop = countryInput.parentElement.querySelector(".country-drop");
+      if (drop && pack) {
+        drop.classList.add("open");
+        drop.innerHTML = renderCountryOptions(countryInput.value, pack.countries || []);
+      }
+    });
     overlay.addEventListener(
       "wheel",
       (e) => {
@@ -1135,6 +1653,15 @@ function bindOverlays() {
     el.addEventListener("input", sync);
     el.addEventListener("change", sync);
   });
+  const createName = overlay.querySelector("[data-pack-surface='create'] [data-pack='name']");
+  const createForm = segmentState.createPack;
+  if (
+    createName &&
+    createForm &&
+    !(createForm.name || createForm.desc || createForm.enabled || (createForm.includes && createForm.includes.length))
+  ) {
+    createName.focus();
+  }
   const pickerInput = overlay.querySelector("[data-picker-q]");
   if (pickerInput) {
     pickerInput.addEventListener("input", () => {
@@ -1182,7 +1709,10 @@ function navigateTo(key, extra) {
   extra = extra || {};
   const go = () => {
     openPage(key);
-    if (extra.packId) segmentState.selectedPackId = extra.packId;
+    if (extra.packId) {
+      segmentState.selectedPackId = extra.packId;
+      segmentState.detailPackId = extra.packId;
+    }
     if (extra.tagId) segmentState.highlightTagId = extra.tagId;
     if (extra.openDrawer && extra.tagId) {
       const tag = tagById(extra.tagId);

@@ -13,6 +13,7 @@ const segmentState = {
   countryQuery: "",
   countryOpen: false,
   createPack: null,
+  packGuide: false,
   detailPackId: null,
   packStatus: "",
   packCreator: "",
@@ -62,7 +63,7 @@ function createPackHasInput() {
       (form.includes && form.includes.length) ||
       (form.excludes && form.excludes.length) ||
       (form.countries && form.countries.length) ||
-      (form.devices && form.devices.length),
+      (Array.isArray(form.devices) && !devicesMatch(form.devices, allDeviceIds())),
   );
 }
 
@@ -77,7 +78,8 @@ function isSegmentDirty() {
       (typeof isVideoDirty === "function" && isVideoDirty()) ||
       (typeof isRankDirty === "function" && isRankDirty()) ||
       (typeof isCategoryDirty === "function" && isCategoryDirty()) ||
-      (typeof isFeaturePageDirty === "function" && isFeaturePageDirty()),
+      (typeof isFeaturePageDirty === "function" && isFeaturePageDirty()) ||
+      (typeof isTabbarDirty === "function" && isTabbarDirty()),
   );
 }
 
@@ -127,6 +129,7 @@ function confirmLeaveIfDirty(next) {
         featurePageState.editor = null;
         featurePageState.view = "list";
       }
+      if (typeof resetTabbarDraft === "function") resetTabbarDraft();
       next();
     },
   });
@@ -472,7 +475,7 @@ function blankCreatePack() {
     includes: [],
     excludes: [],
     countries: [],
-    devices: [],
+    devices: allDeviceIds(),
     templatePick: "",
     estimate: { include: 0, afterExclude: 0, total: 0 },
   };
@@ -508,7 +511,7 @@ function fakeEstimate(pack) {
 
 function ensurePackExtras(pack) {
   if (!pack.countries) pack.countries = [];
-  if (!Array.isArray(pack.devices)) pack.devices = [];
+  if (!Array.isArray(pack.devices)) pack.devices = allDeviceIds();
   if (!Array.isArray(pack.includes)) pack.includes = [];
   if (!Array.isArray(pack.excludes)) pack.excludes = [];
 }
@@ -676,6 +679,15 @@ const DEVICE_OPTIONS = [
   { id: "h5", label: "H5" },
 ];
 
+function allDeviceIds() {
+  return DEVICE_OPTIONS.map((item) => item.id);
+}
+
+function devicesMatch(devices, expected) {
+  const selected = devices || [];
+  return selected.length === expected.length && expected.every((id) => selected.includes(id));
+}
+
 function renderDeviceField(pack) {
   const selected = new Set(pack.devices || []);
   const options = DEVICE_OPTIONS.map(
@@ -687,7 +699,7 @@ function renderDeviceField(pack) {
   ).join("");
   return `
     <div class="label" style="margin-top:16px">用户设备</div>
-    <p class="filter-hint">不是用户标签。不选表示不限设备。选出的设备表示当次请求须来自这些端。</p>
+    <p class="filter-hint">不是用户标签。默认全选，可取消一项或多项。当次请求须来自仍选中的端。</p>
     <div class="device-options">${options}</div>
   `;
 }
@@ -784,7 +796,7 @@ function renderPackSections(pack, surface) {
     </section>
     <section class="form-sec">
       <h4>2. 圈选条件</h4>
-      <p class="filter-hint">标签只登记口径。天数、秒数、金额和窗口在下面填。套用模板会覆盖当前条件，并写入合规否决：年龄验证为通过、账号状态为正常。当次请求地区可售始终生效，不是用户标签，在下面单独限售。</p>
+      <p class="filter-hint">标签不是必填。只选当次请求地区或用户设备也可以保存。天数、秒数、金额和窗口在标签块里填。套用模板会覆盖当前标签条件，并写入合规否决：年龄验证为通过、账号状态为正常。当次请求地区可售始终生效。</p>
       <div class="cond-params">
         <select class="input" data-template-pick>
           <option value="">选择圈选模板</option>
@@ -799,7 +811,7 @@ function renderPackSections(pack, surface) {
         <label><input type="radio" name="includeMode-${surface}" data-pack="includeMode" value="or" ${pack.includeMode === "or" ? "checked" : ""} /> 满足任意（OR）</label>
         <label><input type="radio" name="includeMode-${surface}" data-pack="includeMode" value="and" ${pack.includeMode === "and" ? "checked" : ""} /> 同时满足（AND）</label>
       </div>
-      ${pack.includes.map((id, index) => renderTagRow("includes", id, index, surface)).join("") || '<div class="empty-inline">还没有包含条件</div>'}
+      ${pack.includes.map((id, index) => renderTagRow("includes", id, index, surface)).join("") || '<div class="empty-inline">还没有标签。可以不选标签，只靠地区或设备圈人。</div>'}
       <button type="button" class="btn" data-act="add-cond" data-kind="includes">添加标签</button>
       ${renderCountryField(pack)}
       ${renderDeviceField(pack)}
@@ -912,11 +924,11 @@ function renderPackDetailDialog() {
             <span>说明</span><b>${escapeHtml(pack.desc || "—")}</b>
           </div>
           <h4>包含区 · ${pack.includeMode === "or" ? "满足任意" : "同时满足"}</h4>
-          ${renderCondSummaryList(pack.includes)}
+          ${pack.includes.length ? renderCondSummaryList(pack.includes) : '<div class="empty-inline">无标签条件</div>'}
           <h4>当次请求地区</h4>
           <p>${countries.length ? escapeHtml(countries.join("、")) : "不限地区"}</p>
           <h4>用户设备</h4>
-          <p>${devices.length ? escapeHtml(devices.join("、")) : "不限设备"}</p>
+          <p>${devices.length ? escapeHtml(devices.join("、")) : "未选择设备"}</p>
           <h4>排除区</h4>
           ${renderCondSummaryList(pack.excludes)}
           <h4>预估</h4>
@@ -953,7 +965,10 @@ function renderCreatePackDialog() {
   return `
     <div class="mask">
       <div class="dialog create-pack-dialog" data-pack-surface="create">
-        <div class="dialog-title">${editing ? "编辑人群包" : "新建人群包"}</div>
+        <div class="dialog-title">
+          <span>${editing ? "编辑人群包" : "新建人群包"}</span>
+          <button type="button" class="btn" data-act="open-pack-guide">新手必读</button>
+        </div>
         <div class="dialog-body create-pack-form">
           <p class="filter-hint">${editing ? "保存后更新这条人群包。取消不保留本次修改。" : "保存后才会出现在列表。取消或关闭不会留下草稿。"}</p>
           <label class="enable-switch ${pack.enabled ? "on" : ""}">
@@ -966,6 +981,37 @@ function renderCreatePackDialog() {
         <div class="dialog-foot">
           <button type="button" class="btn" data-act="close-create-pack">取消</button>
           <button type="button" class="btn btn-primary" data-act="confirm-create-pack" ${name ? "" : "disabled"}>保存</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderPackGuide() {
+  if (!segmentState.packGuide) return "";
+  return `
+    <div class="mask">
+      <div class="dialog pack-guide-dialog">
+        <div class="dialog-title">
+          <span>新手必读</span>
+          <button type="button" class="icon-x" data-act="close-pack-guide" aria-label="关闭">×</button>
+        </div>
+        <div class="dialog-body">
+          <p class="filter-hint">下面是创建人群包时要注意的事。</p>
+          <ol class="pack-guide-list">
+            <li>点保存才会进入列表。取消或关闭后，这次填写不会留下。</li>
+            <li>名称必填。编号和创建者在保存时生成，之后不能改。</li>
+            <li>标签可以不选。只选当次请求地区，或只选用户设备，也可以保存。</li>
+            <li>天数、金额、秒数和窗口写在这个人群包的标签上。</li>
+            <li>模板是系统准备的 5 个。先在下拉里选中，再点套用。套用会换掉包含区、清空排除区，并改成同时满足。名称、地区和设备保持不动。包含区或排除区已经有标签时，会先确认。套用完还要点保存。</li>
+            <li>地区留空表示不限地区。设备默认四个都选中，取消后只匹配剩下的端；四个都取消，就没有设备能命中。</li>
+            <li>年龄验证要通过、账号要正常、当次请求地区要可售。这三条每次判定都会检查。</li>
+            <li>要覆盖全部用户，引用已有的「全部用户」。</li>
+            <li>停用后，已经引用的业务可以继续用，新业务不能再选。有引用时不能删除。</li>
+          </ol>
+        </div>
+        <div class="dialog-foot">
+          <button type="button" class="btn btn-primary" data-act="close-pack-guide">知道了</button>
         </div>
       </div>
     </div>
@@ -1452,6 +1498,11 @@ function onOverlayClick(e) {
   const btn = e.target.closest("[data-act]");
   const mask = e.target.classList && e.target.classList.contains("mask") ? e.target : null;
   if (mask && !e.target.closest(".drawer, .dialog")) {
+    if (segmentState.packGuide) {
+      segmentState.packGuide = false;
+      renderApp();
+      return;
+    }
     if (segmentState.picker) {
       segmentState.picker = null;
       renderApp();
@@ -1521,8 +1572,17 @@ function onOverlayClick(e) {
     renderApp();
   }
   if (act === "detail-to-edit") openPackEditor(segmentState.detailPackId);
+  if (act === "open-pack-guide") {
+    segmentState.packGuide = true;
+    renderApp();
+  }
+  if (act === "close-pack-guide") {
+    segmentState.packGuide = false;
+    renderApp();
+  }
   if (act === "close-create-pack") {
     segmentState.createPack = null;
+    segmentState.packGuide = false;
     renderApp();
   }
   if (act === "confirm-create-pack") commitCreatePack();
@@ -1583,13 +1643,19 @@ function closeOverlays() {
   segmentState.refsDrawer = null;
   segmentState.picker = null;
   segmentState.createPack = null;
+  segmentState.packGuide = false;
   segmentState.detailPackId = null;
 }
 
 function bindOverlays() {
   const overlay = document.getElementById("overlay-root");
   overlay.innerHTML =
-    renderTagDrawer() + renderRefsDrawer() + renderPackDetailDialog() + renderCreatePackDialog() + renderPicker();
+    renderTagDrawer() +
+    renderRefsDrawer() +
+    renderPackDetailDialog() +
+    renderCreatePackDialog() +
+    renderPackGuide() +
+    renderPicker();
   const hasOverlay = Boolean(
     overlay.querySelector(".mask") || document.getElementById("confirm-modal"),
   );
@@ -1658,6 +1724,7 @@ function bindOverlays() {
   if (
     createName &&
     createForm &&
+    !segmentState.packGuide &&
     !(createForm.name || createForm.desc || createForm.enabled || (createForm.includes && createForm.includes.length))
   ) {
     createName.focus();

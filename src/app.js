@@ -185,6 +185,7 @@ const READY_MENU_KEYS_V2 = new Set([
   "rank",
   "content-category",
   "feature-page",
+  "tabbar",
   "upload-url",
   "search-effect",
   "l1-consume-board",
@@ -504,6 +505,8 @@ function renderApp() {
     mountCategoryPage(main);
   } else if (activeKey === "feature-page") {
     mountFeaturePage(main);
+  } else if (activeKey === "tabbar") {
+    mountTabbarPage(main);
   } else if (activeKey === "upload-url") {
     mountUploadUrlPage(main);
   } else if (activeKey === "search-effect") {

@@ -315,7 +315,7 @@ function packFromTemplate(id, key, extra) {
       includes: tpl.includes,
       excludes: [],
       countries: [],
-      devices: [],
+      devices: ["android", "ios", "web", "h5"],
       bindCount: 0,
       updatedAt: "09-10 18:00",
       estimate: { include: 12000, afterExclude: 12000, total: 12000 },
@@ -352,6 +352,23 @@ function createInitialPacks() {
       createdBy: "运营小王",
       estimate: { include: 15300, afterExclude: 15300, total: 15300 },
     }),
+    {
+      id: "pack_all",
+      no: "QP0006",
+      name: "全部用户",
+      code: "seg_all",
+      createdBy: "系统",
+      desc: "保底人群。不含标签，不限地区，安卓、苹果、Web、H5 全选。策略要覆盖全部用户时引用本包。年龄验证、账号状态和地区可售仍由判定执行。",
+      enabled: true,
+      includeMode: "and",
+      includes: [],
+      excludes: [],
+      countries: [],
+      devices: ["android", "ios", "web", "h5"],
+      bindCount: 0,
+      updatedAt: "09-10 18:00",
+      estimate: { include: 86000, afterExclude: 86000, total: 86000 },
+    },
   ];
 }
 

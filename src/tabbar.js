@@ -16,27 +16,52 @@ const TABBAR_FEATURE_KINDS = [
 
 const TABBAR_WIDGETS = [
   {
-    group: "顶部功能",
+    group: "广告组件",
     items: [
-      { key: "top1", name: "顶部功能样式1", tier: "base" },
-      { key: "top2", name: "顶部功能样式2", tier: "base" },
-      { key: "top3", name: "顶部功能样式3", tier: "adv" },
-      { key: "top4", name: "顶部功能样式4", tier: "adv" },
+      { key: "banner", name: "Banner 广告", tier: "base" },
+      { key: "icons", name: "图标广告", tier: "base" },
+      { key: "textad", name: "文字广告", tier: "base" },
+      { key: "mrec", name: "MREC 广告", tier: "base" },
+      { key: "native", name: "原生广告", tier: "base" },
     ],
   },
   {
-    group: "内容组件",
+    group: "金刚组件",
     items: [
-      { key: "marquee", name: "跑马灯", tier: "base" },
-      { key: "falls", name: "瀑布流", tier: "adv" },
-      { key: "grid", name: "三列多行", tier: "base" },
-      { key: "icons", name: "图标广告", tier: "base" },
+      { key: "kingkong", name: "金刚区", tier: "base" },
+      { key: "ranknav", name: "排行榜导航", tier: "adv" },
     ],
+  },
+  {
+    group: "活动组件",
+    items: [{ key: "activity", name: "活动组件", tier: "adv" }],
   },
 ];
 
 function blankTabbarChannel(name) {
-  return { id: `ch_${Math.random().toString(16).slice(2, 10)}`, name: name || "" };
+  return { id: `ch_${Math.random().toString(16).slice(2, 10)}`, name: name || "", widgets: [] };
+}
+
+const TABBAR_AD_TYPE = {
+  banner: "bannerAd",
+  icons: "iconAd",
+  textad: "textAd",
+  mrec: "mrecAd",
+  native: "nativeAd",
+};
+
+const TABBAR_INT_FIELDS = new Set(["sizeWidth", "sizeHeight", "itemSpacing", "maxCount", "columns", "spacing", "iconSize", "maxLines"]);
+
+function defaultTabbarWidgetConfig(key) {
+  if (key === "banner") return { componentType: "bannerAd", adSlotKey: "", format: "banner", sizeWidth: "", sizeHeight: "", itemSpacing: "12" };
+  if (key === "icons") return { componentType: "iconAd", adSlotKey: "", layout: "auto", maxCountMode: "unlimited", maxCount: "0", columns: "5", spacing: "8", iconSize: "" };
+  if (key === "textad") return { componentType: "textAd", adSlotKey: "", layout: "cell", maxCountMode: "unlimited", maxCount: "0", columns: "3", spacing: "8", maxLines: "2" };
+  if (key === "mrec") return { componentType: "mrecAd", adSlotKey: "", sizeWidth: "300", sizeHeight: "250" };
+  if (key === "native") return { componentType: "nativeAd", adSlotKey: "", layout: "bannerList", columns: "" };
+  if (key === "kingkong") return { cols: "5", names: "追剧,排行,福利,社区,分类" };
+  if (key === "ranknav") return { tabs: "热门推荐,最新上架,最多收藏" };
+  if (key === "activity") return { title: "限时活动", desc: "点击进入活动页" };
+  return {};
 }
 
 function blankTabbarEntry() {
@@ -93,8 +118,6 @@ const tabbarState = {
   templateName: "",
   templates: [],
   pickedWidget: "",
-  widgetCount: "5",
-  widgetSlot: "",
 };
 tabbarState.published = initialTabbarConfig();
 tabbarState.saved = clone(tabbarState.published);
@@ -124,6 +147,114 @@ function tabbarHasEmoji(text) {
 
 function selectedTabbarEntry() {
   return tabbarState.draft.entries.find((item) => item.id === tabbarState.selectedId) || tabbarState.draft.entries[0];
+}
+
+function currentTabbarChannel(entry) {
+  const current = entry || selectedTabbarEntry();
+  if (!current) return null;
+  return current.channels.find((item) => item.id === current.channelId) || current.channels[0] || null;
+}
+
+function selectedTabbarWidget() {
+  const channel = currentTabbarChannel();
+  if (!channel || !tabbarState.pickedWidget) return null;
+  return (channel.widgets || []).find((item) => item.id === tabbarState.pickedWidget) || null;
+}
+
+function tabbarMaxCountMode(config) {
+  if (config.maxCountMode === "limit" || config.maxCountMode === "unlimited") return config.maxCountMode;
+  return Number(config.maxCount) > 0 ? "limit" : "unlimited";
+}
+
+function tabbarIconVisibility(layout) {
+  if (layout === "image") return { maxCount: false, columns: false, spacing: false };
+  if (layout === "horizontal") return { maxCount: true, columns: false, spacing: true };
+  if (layout === "carousel") return { maxCount: true, columns: false, spacing: false };
+  return { maxCount: true, columns: true, spacing: true };
+}
+
+function renderCanvasWidget(widget) {
+  const on = widget.id === tabbarState.pickedWidget ? " on" : "";
+  const config = widget.config || {};
+  const open = `<button type="button" class="`;
+  const close = `" data-tabbar-act="select-widget" data-id="${widget.id}">`;
+  if (widget.key === "banner") {
+    const large = config.format === "bannerLarge";
+    return `${open}tw tw-banner${large ? " large" : ""}${on}${close}<span>广告</span><b>${large ? "大 Banner" : "普通 Banner"}</b></button>`;
+  }
+  if (widget.key === "icons") {
+    const layout = config.layout || "auto";
+    const visible = tabbarIconVisibility(layout);
+    const columns = Math.max(1, Math.min(10, Number(config.columns) || 5));
+    const spacingText = String(config.spacing == null ? "" : config.spacing).trim();
+    const spacing = spacingText === "" ? 8 : Math.max(0, Math.min(24, Number(spacingText) || 0));
+    const countText = String(config.maxCount == null ? "" : config.maxCount).trim();
+    const maxCount = /^[1-9]\d*$/.test(countText) ? Math.min(Number(countText), 30) : 0;
+    const single = layout === "image" || layout === "carousel";
+    const titled = layout === "auto" || layout === "grid" || layout === "horizontal";
+    let count = 1;
+    let cols = 1;
+    let gap = 0;
+    if (layout === "horizontal") {
+      count = Math.max(1, maxCount || 5);
+      gap = spacing;
+    } else if (!single) {
+      cols = columns;
+      count = Math.max(1, maxCount || columns);
+      gap = visible.spacing ? spacing : 6;
+    }
+    const cells = Array.from({ length: count }, () => `<i>${titled ? "<b></b>标题" : ""}</i>`).join("");
+    const layoutStyle = layout === "horizontal" ? "display:flex;overflow:hidden;" : `grid-template-columns:repeat(${cols},minmax(0,1fr));`;
+    return `${open}tw tw-icons layout-${layout}${on}${close.slice(0, -1)} style="${layoutStyle}gap:${gap}px">${cells}</button>`;
+  }
+  if (widget.key === "textad") {
+    const layout = config.layout || "cell";
+    if (layout === "marquee") {
+      return `${open}tw tw-textad layout-marquee${on}${close}<span>广告</span><b>文字广告</b></button>`;
+    }
+    if (layout === "grid") {
+      const columns = Math.max(1, Math.min(4, Number(config.columns) || 3));
+      const limited = tabbarMaxCountMode(config) === "limit" ? Number(config.maxCount) : 0;
+      const count = limited > 0 ? Math.min(limited, columns) : columns;
+      const cells = Array.from({ length: Math.max(1, count) }, () => "<i><b>标题</b><span>描述</span></i>").join("");
+      return `${open}tw tw-textad layout-grid${on}${close.slice(0, -1)} style="grid-template-columns:repeat(${columns},minmax(0,1fr))">${cells}</button>`;
+    }
+    return `${open}tw tw-textad${on}${close}<span>广告</span><b>文字广告</b><em>描述</em></button>`;
+  }
+  if (widget.key === "mrec") {
+    const width = config.sizeWidth || "300";
+    const height = config.sizeHeight || "250";
+    return `${open}tw tw-mrec${on}${close}<span>广告</span><b>MREC</b><em>${escapeHtml(String(width))}×${escapeHtml(String(height))}</em></button>`;
+  }
+  if (widget.key === "native") {
+    const layout = config.layout === "grid" ? "grid" : "list";
+    const columns = layout === "grid" ? Math.max(1, Math.min(4, Number(config.columns) || 2)) : 1;
+    const count = layout === "grid" ? columns : 2;
+    const cards = Array.from({ length: count }, () => "<i><b>标题</b><span>描述</span><em>按钮</em></i>").join("");
+    const style = layout === "grid" ? ` style="grid-template-columns:repeat(${columns},minmax(0,1fr))"` : "";
+    return `${open}tw tw-native layout-${layout}${on}${close.slice(0, -1)}${style}>${cards}</button>`;
+  }
+  if (widget.key === "kingkong") {
+    const names = String(config.names || "")
+      .split(/[,，]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const cols = config.cols === "4" ? 4 : 5;
+    const cells = (names.length ? names : ["金刚"]).map((item) => `<i><b></b>${escapeHtml(item)}</i>`).join("");
+    return `<button type="button" class="tw tw-kingkong cols-${cols}${on}" data-tabbar-act="select-widget" data-id="${widget.id}">${cells}</button>`;
+  }
+  if (widget.key === "ranknav") {
+    const tabs = String(config.tabs || "")
+      .split(/[,，]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const labels = (tabs.length ? tabs : ["热门推荐"]).map((item, index) => `<span class="${index === 0 ? "on" : ""}">${escapeHtml(item)}</span>`).join("");
+    return `<button type="button" class="tw tw-ranknav${on}" data-tabbar-act="select-widget" data-id="${widget.id}">${labels}</button>`;
+  }
+  if (widget.key === "activity") {
+    return `<button type="button" class="tw tw-activity${on}" data-tabbar-act="select-widget" data-id="${widget.id}"><b>${escapeHtml(config.title || "活动")}</b><span>${escapeHtml(config.desc || "")}</span></button>`;
+  }
+  return "";
 }
 
 function tabbarWidgetName(key) {
@@ -275,13 +406,14 @@ function renderTabbarStudio(entry) {
   const palette = TABBAR_WIDGETS.map((group) => {
     const cards = group.items
       .map((item) => {
-        const on = tabbarState.pickedWidget === item.key;
+        const selected = selectedTabbarWidget();
+        const on = selected && selected.key === item.key;
         return `
-          <button type="button" class="tabbar-widget${on ? " on" : ""}" data-tabbar-act="pick-widget" data-id="${item.key}">
+          <div class="tabbar-widget${on ? " on" : ""}" draggable="true" data-tabbar-drag="${item.key}">
             <span class="tabbar-widget-thumb"></span>
             <span class="tabbar-tier ${item.tier}">${item.tier === "adv" ? "进阶件" : "基配件"}</span>
             <span>${item.name}</span>
-          </button>`;
+          </div>`;
       })
       .join("");
     return `<div class="tabbar-widget-group"><h5>${group.group}</h5><div class="tabbar-widget-grid">${cards}</div></div>`;
@@ -315,45 +447,111 @@ function renderTabbarStudio(entry) {
           ${palette}
         </aside>
         <div class="tabbar-canvas">
-          <div class="tabbar-device">
+          <div class="tabbar-device" data-tabbar-drop="canvas">
             <div class="tabbar-device-search">请输入搜索关键字</div>
             <div class="tabbar-device-channels">${channelNames || "<span>暂无频道</span>"}</div>
-            <button type="button" class="tabbar-device-block" data-tabbar-act="pick-widget" data-id="top1">顶部功能</button>
-            <button type="button" class="tabbar-device-hero" data-tabbar-act="pick-widget" data-id="falls">内容区</button>
-            <button type="button" class="tabbar-device-banner" data-tabbar-act="pick-widget" data-id="marquee">Banner 广告</button>
-            <button type="button" class="tabbar-device-grid" data-tabbar-act="pick-widget" data-id="icons">
-              <i></i><i></i><i></i><i></i><i></i>
-            </button>
-            <div class="tabbar-device-tabs"><span>热门推荐</span><span>最新上架</span><span>最多收藏</span></div>
+            <div class="tabbar-device-drop">
+              ${(channel && channel.widgets && channel.widgets.length)
+                ? channel.widgets.map((widget) => renderCanvasWidget(widget)).join("")
+                : '<div class="tabbar-drop-hint">从左侧把组件拖到这里</div>'}
+            </div>
           </div>
         </div>
         <aside class="tabbar-side">
           <h3>切换频道</h3>
-          <div class="tabbar-side-channels">${channelButtons || '<p class="field-hint">还没有频道</p>'}</div>
           <h3>组件模块内容配置</h3>
-          ${renderTabbarWidgetForm()}
+          <div class="tabbar-side-channels">${channelButtons || '<p class="field-hint">还没有频道</p>'}</div>
+          <div class="tabbar-side-config">${renderTabbarWidgetForm()}</div>
         </aside>
       </div>
     </section>
   `;
 }
 
+function tabbarAdSlotField(config) {
+  return `<label>广告位标识 *<input class="input" data-tabbar-field="widgetConfig" data-config="adSlotKey" value="${escapeHtml(config.adSlotKey || "")}" placeholder="请输入广告平台中广告位的广告位标识字段" /></label><p class="field-hint">广告平台里该广告位的固定标识，需完全一致。两个组件填同一个值，会请求同一个广告位。</p>`;
+}
+
+function tabbarChoiceField(widget, label, configKey, options, current) {
+  const name = `tb_${widget.id}_${configKey}`;
+  const radios = options
+    .map(([value, text, tip]) => {
+      const tipAttr = tip ? ` class="tabbar-tip" data-tabbar-tip="${escapeHtml(tip)}"` : "";
+      return `<label${tipAttr}><input type="radio" name="${name}" data-tabbar-field="widgetConfig" data-config="${configKey}" value="${value}" ${current === value ? "checked" : ""} />${text}</label>`;
+    })
+    .join("");
+  return `<div class="tabbar-choice-block"><span>${label}</span><div class="tabbar-choices">${radios}</div></div>`;
+}
+
+function tabbarNumberField(label, configKey, value, placeholder) {
+  const shown = value == null ? "" : String(value);
+  return `<label>${label}<input class="input" inputmode="numeric" data-tabbar-field="widgetConfig" data-config="${configKey}" value="${escapeHtml(shown)}" placeholder="${escapeHtml(placeholder || "")}" /></label>`;
+}
+
+function tabbarMaxCountField(config) {
+  const mode = tabbarMaxCountMode(config);
+  const select = `<label>最多展示条数<select class="input" data-tabbar-field="widgetConfig" data-config="maxCountMode"><option value="unlimited" ${mode === "unlimited" ? "selected" : ""}>不限制</option><option value="limit" ${mode === "limit" ? "selected" : ""}>指定条数</option></select></label>`;
+  const input = mode === "limit" ? tabbarNumberField("条数", "maxCount", config.maxCount, "非负整数") : "";
+  return `${select}${input}<p class="field-hint">实际展示取广告位返回条数和这个上限中更小的一个。不限制保存为 0，表示不截断。</p>`;
+}
+
+function tabbarGridMaxCountField(config) {
+  const text = String(config.maxCount == null ? "" : config.maxCount).trim();
+  const shown = /^[1-9]\d*$/.test(text) ? text : "";
+  return `${tabbarNumberField("最多展示条数 *", "maxCount", shown, "正整数")}<p class="field-hint">最大值不要超过列数*3</p>`;
+}
+
+function renderTabbarAdFields(widget) {
+  const config = widget.config || {};
+  const slot = tabbarAdSlotField(config);
+  if (widget.key === "banner") {
+    return `${slot}${tabbarChoiceField(widget, "广告形式 *", "format", [["banner", "普通 Banner"], ["bannerLarge", "大 Banner"]], config.format === "bannerLarge" ? "bannerLarge" : "banner")}${tabbarNumberField("展示宽度", "sizeWidth", config.sizeWidth, "正整数，可空")}${tabbarNumberField("展示高度", "sizeHeight", config.sizeHeight, "正整数，可空")}<p class="field-hint">宽度和高度成对填写。都留空时使用广告位下发的尺寸。</p>${tabbarNumberField("多条间距", "itemSpacing", config.itemSpacing, "12")}<p class="field-hint">单位 px。该广告位返回多条并纵向排列时，条与条的间距。</p>`;
+  }
+  if (widget.key === "icons") {
+    const layout = config.layout || "auto";
+    const visible = tabbarIconVisibility(layout);
+    return `${slot}${tabbarChoiceField(widget, "布局 *", "layout", [
+      ["auto", "自动", "广告位只返回 1 条时显示单图，返回多条时按宫格排列。"],
+      ["image", "单图", "只显示第一条素材。"],
+      ["grid", "宫格", "按列数排成宫格，标题使用素材标题。"],
+      ["horizontal", "横向滚动", "单行横向滑动，不使用列数。"],
+      ["carousel", "单图标轮播", "每页一个图标，不显示标题。可以左右滑动，约每 3 秒自动切换。"],
+    ], layout)}${visible.maxCount ? (layout === "grid" ? tabbarGridMaxCountField(config) : tabbarMaxCountField(config)) : ""}${visible.columns ? tabbarNumberField("列数", "columns", config.columns, "5") : ""}${visible.spacing ? tabbarNumberField("间距", "spacing", config.spacing, "8") : ""}${tabbarNumberField("图标尺寸", "iconSize", config.iconSize, "px，可空")}<p class="field-hint">图标尺寸留空时使用 SDK 默认尺寸。关闭按钮由 SDK 绘制。</p>`;
+  }
+  if (widget.key === "textad") {
+    const layout = config.layout || "cell";
+    const grid = layout === "grid";
+    const lines = layout === "cell" || layout === "grid";
+    return `${slot}${tabbarChoiceField(widget, "布局 *", "layout", [["cell", "单条"], ["grid", "宫格"], ["marquee", "跑马灯"]], layout)}${grid ? tabbarMaxCountField(config) : ""}${grid ? tabbarNumberField("列数", "columns", config.columns, "3") : ""}${grid ? tabbarNumberField("间距", "spacing", config.spacing, "8") : ""}${lines ? tabbarNumberField("最大行数", "maxLines", config.maxLines, "2") : ""}${layout === "marquee" ? '<p class="field-hint">滚动速度用广告位下发的规则，这里不配置。</p>' : ""}`;
+  }
+  if (widget.key === "mrec") {
+    return `${slot}${tabbarNumberField("展示宽度", "sizeWidth", config.sizeWidth, "300")}${tabbarNumberField("展示高度", "sizeHeight", config.sizeHeight, "250")}<p class="field-hint">默认 300×250。保存时始终带上尺寸。</p>`;
+  }
+  if (widget.key === "native") {
+    const layout = config.layout === "grid" ? "grid" : "bannerList";
+    return `${slot}${tabbarChoiceField(widget, "布局 *", "layout", [["bannerList", "列表"], ["grid", "宫格"]], layout)}${tabbarNumberField("列数", "columns", config.columns, "可空")}<p class="field-hint">留空时，列表按 1 列、宫格按 2 列。关闭按钮由广告位规则决定。</p>`;
+  }
+  return "";
+}
+
 function renderTabbarWidgetForm() {
-  const name = tabbarWidgetName(tabbarState.pickedWidget);
-  if (!name) return '<div class="tabbar-config-empty">请先点击画布内组件</div>';
+  const widget = selectedTabbarWidget();
+  if (!widget) return '<div class="tabbar-config-empty">请先点击画布内组件</div>';
+  const config = widget.config || {};
+  const name = tabbarWidgetName(widget.key);
+  let fields = renderTabbarAdFields(widget);
+  if (widget.key === "kingkong") {
+    fields = `<label>列数<select class="input" data-tabbar-field="widgetConfig" data-config="cols"><option value="4" ${config.cols === "4" ? "selected" : ""}>4 列</option><option value="5" ${config.cols !== "4" ? "selected" : ""}>5 列</option></select></label><label>入口名称<input class="input" data-tabbar-field="widgetConfig" data-config="names" value="${escapeHtml(config.names || "")}" placeholder="用逗号分开" /></label>`;
+  } else if (widget.key === "ranknav") {
+    fields = `<label>榜单标签<input class="input" data-tabbar-field="widgetConfig" data-config="tabs" value="${escapeHtml(config.tabs || "")}" placeholder="用逗号分开" /></label>`;
+  } else if (widget.key === "activity") {
+    fields = `<label>活动标题 *<input class="input" data-tabbar-field="widgetConfig" data-config="title" value="${escapeHtml(config.title || "")}" /></label><label>活动说明<input class="input" data-tabbar-field="widgetConfig" data-config="desc" value="${escapeHtml(config.desc || "")}" /></label>`;
+  }
   return `
     <div class="tabbar-config">
       <h4>${escapeHtml(name)}</h4>
-      <label>展示数量 *
-        <select class="input" data-tabbar-field="widgetCount">
-          ${["1", "3", "5", "无限"]
-            .map((item) => `<option value="${item}" ${tabbarState.widgetCount === item ? "selected" : ""}>${item === "无限" ? "无限" : `${item}个展示位`}</option>`)
-            .join("")}
-        </select>
-      </label>
-      <label>广告位标识 *
-        <input class="input" data-tabbar-field="widgetSlot" value="${escapeHtml(tabbarState.widgetSlot)}" placeholder="请输入标识" />
-      </label>
+      ${fields}
+      <button type="button" class="btn" data-tabbar-act="remove-widget" data-id="${widget.id}">从画布移除</button>
     </div>
   `;
 }
@@ -439,6 +637,140 @@ function deleteTabbarEntry() {
   renderApp();
 }
 
+function tabbarNonNeg(value, fallback) {
+  const text = String(value == null ? "" : value).trim();
+  if (!text) return { value: fallback };
+  if (!/^(0|[1-9]\d*)$/.test(text)) return { error: true };
+  return { value: Number(text) };
+}
+
+function tabbarPositive(value, fallback) {
+  const text = String(value == null ? "" : value).trim();
+  if (!text) return { value: fallback, empty: true };
+  if (!/^[1-9]\d*$/.test(text)) return { error: true };
+  return { value: Number(text) };
+}
+
+function tabbarSavedMaxCount(config) {
+  if (tabbarMaxCountMode(config) !== "limit") return { value: 0 };
+  const text = String(config.maxCount == null ? "" : config.maxCount).trim();
+  if (!text) return { error: "请填写最多展示条数" };
+  if (!/^(0|[1-9]\d*)$/.test(text)) return { error: "最多展示条数需为非负整数" };
+  return { value: Number(text) };
+}
+
+function normalizeTabbarAd(widget) {
+  const config = widget.config || {};
+  const name = tabbarWidgetName(widget.key);
+  const adSlotKey = String(config.adSlotKey || "").trim();
+  if (!adSlotKey) return `${name}：请填写广告位标识`;
+  const next = { componentType: TABBAR_AD_TYPE[widget.key], adSlotKey };
+  if (widget.key === "banner") {
+    const width = String(config.sizeWidth || "").trim();
+    const height = String(config.sizeHeight || "").trim();
+    if ((width && !height) || (!width && height)) return "Banner 广告：展示宽度和高度需要同时填写";
+    if (width && !/^[1-9]\d*$/.test(width)) return "Banner 广告：展示宽度需为正整数";
+    if (height && !/^[1-9]\d*$/.test(height)) return "Banner 广告：展示高度需为正整数";
+    const spacing = tabbarNonNeg(config.itemSpacing, 12);
+    if (spacing.error) return "Banner 广告：多条间距需为非负整数";
+    next.format = config.format === "bannerLarge" ? "bannerLarge" : "banner";
+    next.itemSpacing = spacing.value;
+    if (width && height) {
+      next.sizeWidth = Number(width);
+      next.sizeHeight = Number(height);
+    }
+  } else if (widget.key === "icons") {
+    const layout = ["auto", "image", "grid", "horizontal", "carousel"].includes(config.layout) ? config.layout : "auto";
+    const visible = tabbarIconVisibility(layout);
+    next.layout = layout;
+    if (layout === "image") next.maxCount = 1;
+    else if (layout === "grid") {
+      const columns = tabbarPositive(config.columns, 5);
+      if (columns.error) return "图标广告：列数需为正整数";
+      const text = String(config.maxCount == null ? "" : config.maxCount).trim();
+      if (!/^[1-9]\d*$/.test(text)) return "图标广告：请填写最多展示条数";
+      if (Number(text) > columns.value * 3) return "图标广告：最多展示条数不要超过列数的 3 倍";
+      next.maxCount = Number(text);
+      next.columns = columns.value;
+    } else if (visible.maxCount) {
+      const count = tabbarSavedMaxCount(config);
+      if (count.error) return `图标广告：${count.error}`;
+      next.maxCount = count.value;
+    }
+    if (visible.columns && layout !== "grid") {
+      const columns = tabbarPositive(config.columns, 5);
+      if (columns.error) return "图标广告：列数需为正整数";
+      next.columns = columns.value;
+    }
+    if (visible.spacing) {
+      const spacing = tabbarNonNeg(config.spacing, 8);
+      if (spacing.error) return "图标广告：间距需为非负整数";
+      next.spacing = spacing.value;
+    }
+    const iconSize = String(config.iconSize || "").trim();
+    if (iconSize && !/^[1-9]\d*$/.test(iconSize)) return "图标广告：图标尺寸需为正整数";
+    next.iconSize = iconSize ? Number(iconSize) : null;
+  } else if (widget.key === "textad") {
+    const layout = ["cell", "grid", "marquee"].includes(config.layout) ? config.layout : "cell";
+    next.layout = layout;
+    if (layout === "grid") {
+      const count = tabbarSavedMaxCount(config);
+      if (count.error) return `文字广告：${count.error}`;
+      const columns = tabbarPositive(config.columns, 3);
+      if (columns.error) return "文字广告：列数需为正整数";
+      const spacing = tabbarNonNeg(config.spacing, 8);
+      if (spacing.error) return "文字广告：间距需为非负整数";
+      next.maxCount = count.value;
+      next.columns = columns.value;
+      next.spacing = spacing.value;
+    }
+    if (layout === "cell" || layout === "grid") {
+      const lines = tabbarPositive(config.maxLines, 2);
+      if (lines.error) return "文字广告：最大行数需为正整数";
+      next.maxLines = lines.value;
+    }
+  } else if (widget.key === "mrec") {
+    const width = tabbarPositive(config.sizeWidth, 300);
+    const height = tabbarPositive(config.sizeHeight, 250);
+    if (width.error) return "MREC 广告：展示宽度需为正整数";
+    if (height.error) return "MREC 广告：展示高度需为正整数";
+    next.sizeWidth = width.value;
+    next.sizeHeight = height.value;
+  } else if (widget.key === "native") {
+    next.layout = config.layout === "grid" ? "grid" : "bannerList";
+    const columns = String(config.columns || "").trim();
+    if (columns) {
+      if (!/^[1-9]\d*$/.test(columns)) return "原生广告：列数需为正整数";
+      next.columns = Number(columns);
+    }
+  }
+  widget.config = next;
+  return "";
+}
+
+function normalizeTabbarAds(draft) {
+  for (let i = 0; i < draft.entries.length; i += 1) {
+    const entry = draft.entries[i];
+    const channels = entry.channels || [];
+    for (let c = 0; c < channels.length; c += 1) {
+      const channel = channels[c];
+      const widgets = channel.widgets || [];
+      for (let w = 0; w < widgets.length; w += 1) {
+        const widget = widgets[w];
+        if (!TABBAR_AD_TYPE[widget.key]) continue;
+        const message = normalizeTabbarAd(widget);
+        if (message) {
+          tabbarState.selectedId = entry.id;
+          if (entry.type === "product") entry.channelId = channel.id;
+          tabbarState.pickedWidget = widget.id;
+          return message;
+        }
+      }
+    }
+  }
+  return "";
+}
+
 function saveTabbar() {
   const draft = tabbarState.draft;
   const domains = new Set();
@@ -474,6 +806,12 @@ function saveTabbar() {
     domains.add(key);
     entry.name = name;
     entry.domainId = domain;
+  }
+  const adError = normalizeTabbarAds(draft);
+  if (adError) {
+    showToast(adError, "error");
+    renderApp();
+    return;
   }
   tabbarState.saved = clone(draft);
   tabbarState.dirty = false;
@@ -539,10 +877,30 @@ function onTabbarField(el) {
   else if (field === "featureLink") entry.featureLink = el.value;
   else if (field === "channelId") {
     entry.channelId = el.value;
+    tabbarState.pickedWidget = "";
     renderApp();
-  } else if (field === "widgetCount") tabbarState.widgetCount = el.value;
-  else if (field === "widgetSlot") tabbarState.widgetSlot = el.value;
-  if (field !== "channelId") markTabbarDirty();
+  } else if (field === "widgetConfig") {
+    const widget = selectedTabbarWidget();
+    if (!widget) return;
+    const key = el.dataset.config;
+    let value = el.value;
+    if (TABBAR_INT_FIELDS.has(key)) {
+      value = String(value || "").replace(/[^\d]/g, "");
+      if (el.value !== value) el.value = value;
+    }
+    widget.config[key] = value;
+    if (key === "maxCountMode" && value === "unlimited") widget.config.maxCount = "0";
+    if (key === "maxCountMode" && value === "limit" && String(widget.config.maxCount) === "0") widget.config.maxCount = "";
+    markTabbarDirty();
+    if (el.type !== "radio" && el.tagName !== "SELECT") {
+      const preview = document.querySelector(`[data-tabbar-act="select-widget"][data-id="${widget.id}"]`);
+      if (preview) preview.outerHTML = renderCanvasWidget(widget);
+      return;
+    }
+    renderApp();
+    return;
+  }
+  if (field !== "channelId" && field !== "widgetConfig") markTabbarDirty();
 }
 
 function onTabbarClick(e) {
@@ -581,9 +939,16 @@ function onTabbarClick(e) {
     renderApp();
   } else if (act === "channel") {
     entry.channelId = btn.dataset.id;
+    tabbarState.pickedWidget = "";
     renderApp();
-  } else if (act === "pick-widget") {
+  } else if (act === "select-widget") {
     tabbarState.pickedWidget = btn.dataset.id;
+    renderApp();
+  } else if (act === "remove-widget") {
+    const channel = currentTabbarChannel(entry);
+    if (channel) channel.widgets = (channel.widgets || []).filter((item) => item.id !== btn.dataset.id);
+    tabbarState.pickedWidget = "";
+    markTabbarDirty();
     renderApp();
   } else if (act === "pick-icon") {
     const input = document.querySelector(`[data-tabbar-file="${btn.dataset.slot}"]`);
@@ -682,6 +1047,75 @@ function bindTabbarOverlays() {
   }
 }
 
+function addTabbarWidget(key) {
+  const channel = currentTabbarChannel();
+  if (!channel || !tabbarWidgetName(key)) return;
+  if (!Array.isArray(channel.widgets)) channel.widgets = [];
+  const widget = {
+    id: `w_${Math.random().toString(16).slice(2, 10)}`,
+    key,
+    config: defaultTabbarWidgetConfig(key),
+  };
+  channel.widgets.push(widget);
+  tabbarState.pickedWidget = widget.id;
+  tabbarState.dragKey = "";
+  markTabbarDirty();
+  renderApp();
+}
+
+function bindTabbarDrag(main) {
+  main.querySelectorAll("[data-tabbar-drag]").forEach((el) => {
+    el.addEventListener("dragstart", (event) => {
+      tabbarState.dragKey = el.dataset.tabbarDrag;
+      event.dataTransfer.effectAllowed = "copy";
+      event.dataTransfer.setData("text/plain", el.dataset.tabbarDrag);
+      el.classList.add("dragging");
+    });
+    el.addEventListener("dragend", () => el.classList.remove("dragging"));
+  });
+  const canvas = main.querySelector("[data-tabbar-drop]");
+  if (!canvas) return;
+  canvas.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    canvas.classList.add("drop-on");
+  });
+  canvas.addEventListener("dragleave", (event) => {
+    if (!canvas.contains(event.relatedTarget)) canvas.classList.remove("drop-on");
+  });
+  canvas.addEventListener("drop", (event) => {
+    event.preventDefault();
+    canvas.classList.remove("drop-on");
+    const key = event.dataTransfer.getData("text/plain") || tabbarState.dragKey;
+    if (key) addTabbarWidget(key);
+  });
+}
+
+function hideTabbarTip() {
+  const bubble = document.getElementById("tabbar-tip-bubble");
+  if (bubble) bubble.hidden = true;
+}
+
+function showTabbarTip(el) {
+  let bubble = document.getElementById("tabbar-tip-bubble");
+  if (!bubble) {
+    bubble = document.createElement("div");
+    bubble.id = "tabbar-tip-bubble";
+    bubble.className = "tabbar-tip-bubble";
+    document.body.appendChild(bubble);
+  }
+  bubble.textContent = el.getAttribute("data-tabbar-tip") || "";
+  bubble.hidden = false;
+  const rect = el.getBoundingClientRect();
+  const width = bubble.offsetWidth;
+  const height = bubble.offsetHeight;
+  let left = rect.left + rect.width / 2 - width / 2;
+  left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+  let top = rect.top - height - 8;
+  if (top < 8) top = rect.bottom + 8;
+  bubble.style.left = `${left}px`;
+  bubble.style.top = `${top}px`;
+}
+
 function mountTabbarPage(main) {
   if (!main.dataset.tabbarBound) {
     main.dataset.tabbarBound = "1";
@@ -699,9 +1133,23 @@ function mountTabbarPage(main) {
       const file = e.target.closest("[data-tabbar-file]");
       if (file && file.files && file.files[0]) readTabbarIcon(file.files[0], file.dataset.tabbarFile);
       const field = e.target.closest("[data-tabbar-field]");
-      if (field && field.tagName === "SELECT") onTabbarField(field);
+      if (field && (field.tagName === "SELECT" || field.type === "radio")) onTabbarField(field);
     });
+    main.addEventListener("mouseover", (event) => {
+      if (activeKey !== "tabbar") return;
+      const tip = event.target.closest("[data-tabbar-tip]");
+      if (!tip || tip.contains(event.relatedTarget)) return;
+      showTabbarTip(tip);
+    });
+    main.addEventListener("mouseout", (event) => {
+      const tip = event.target.closest("[data-tabbar-tip]");
+      if (!tip || tip.contains(event.relatedTarget)) return;
+      hideTabbarTip();
+    });
+    main.addEventListener("scroll", hideTabbarTip, true);
   }
+  hideTabbarTip();
   main.innerHTML = renderTabbarPage();
+  bindTabbarDrag(main);
   bindTabbarOverlays();
 }

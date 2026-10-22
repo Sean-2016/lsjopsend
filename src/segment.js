@@ -14,6 +14,11 @@ const segmentState = {
   countryOpen: false,
   createPack: null,
   packGuide: false,
+  estimateOpen: false,
+  tagPanels: {},
+  growthScopes: ["account", "device"],
+  growthScopeOpen: false,
+  createNameFocused: false,
   detailPackId: null,
   packStatus: "",
   packCreator: "",
@@ -622,15 +627,15 @@ function renderTagRow(kind, item, index, surface) {
   const label = tag ? tag.name : "标签已失效";
   const cond = item && typeof item === "object" ? item : { tagId: id };
   return `
-    <div class="cond-block">
-      <div class="cond-row">
-        <button type="button" class="tag-pick-btn ${missing ? "bad" : ""}" data-act="open-picker" data-kind="${kind}" data-index="${index}" title="${escapeHtml(tag ? tag.description : "")}">
-          ${escapeHtml(label)}
-        </button>
+    <div class="seg-filter-row">
+      <button type="button" class="seg-filter-name ${missing ? "bad" : ""}" data-act="open-picker" data-kind="${kind}" data-index="${index}" title="${escapeHtml(tag ? tag.description : "")}">
+        ${escapeHtml(label)}
+      </button>
+      <div class="seg-filter-control">
+        ${tag ? renderCondFields(tag, cond, kind, index, surface) : '<span class="field-hint">标签已失效</span>'}
         ${tag ? `<button type="button" class="link" data-act="open-tag" data-id="${tag.id}">查看</button>` : ""}
-        <button type="button" class="link" data-act="del-cond" data-kind="${kind}" data-index="${index}">删除</button>
       </div>
-      ${renderCondFields(tag, cond, kind, index, surface)}
+      <button type="button" class="seg-trash" data-act="del-cond" data-kind="${kind}" data-index="${index}" aria-label="删除条件">×</button>
     </div>
   `;
 }
@@ -662,12 +667,16 @@ function renderCountryField(pack) {
     })
     .join("");
   return `
-    <div class="label" style="margin-top:16px">当次请求地区</div>
-    <p class="filter-hint">不是用户标签。不选表示不限地区。选出的地区表示当次请求需在这些地区可售。</p>
-    <div class="country-box">
-      <div class="country-chips">${chips || ""}</div>
-      <input class="input" data-country-q placeholder="输入 US / 美国 后回车或点选" value="${escapeHtml(segmentState.countryQuery)}" autocomplete="off" />
-      <div class="country-drop${segmentState.countryOpen ? " open" : ""}">${renderCountryOptions(segmentState.countryQuery, selected)}</div>
+    <div class="seg-inline-row is-top">
+      <div class="seg-inline-name">当次请求地区</div>
+      <div class="seg-inline-fields seg-stack">
+        <div class="country-box">
+          <div class="country-chips">${chips || ""}</div>
+          <input class="input" data-country-q placeholder="输入 US / 美国 后回车或点选" value="${escapeHtml(segmentState.countryQuery)}" autocomplete="off" />
+          <div class="country-drop${segmentState.countryOpen ? " open" : ""}">${renderCountryOptions(segmentState.countryQuery, selected)}</div>
+        </div>
+        <p class="filter-hint">不选表示不限地区。选出的地区表示当次请求需在这些地区可售。</p>
+      </div>
     </div>
   `;
 }
@@ -698,9 +707,13 @@ function renderDeviceField(pack) {
       </label>`,
   ).join("");
   return `
-    <div class="label" style="margin-top:16px">用户设备</div>
-    <p class="filter-hint">不是用户标签。默认全选，可取消一项或多项。当次请求须来自仍选中的端。</p>
-    <div class="device-options">${options}</div>
+    <div class="seg-inline-row is-top">
+      <div class="seg-inline-name">用户设备</div>
+      <div class="seg-inline-fields seg-stack">
+        <div class="device-options">${options}</div>
+        <p class="filter-hint">默认全选，可取消一项或多项。当次请求须来自仍选中的端。</p>
+      </div>
+    </div>
   `;
 }
 
@@ -778,13 +791,125 @@ function refreshPickerList(root) {
   if (list) list.innerHTML = renderPickerOptionsHtml();
 }
 
+const TAG_PAGE_GROUPS = [
+  { id: "base", title: "用户基础属性", tags: ["identity_type", "register_at"] },
+  {
+    id: "growth",
+    title: "用户增长标签",
+    account: [
+      "subscription_status",
+      "subscription_expire_at",
+      "ever_subscription_paid",
+      "first_subscription_pay_at",
+      "ever_coin_paid",
+      "first_coin_pay_at",
+      "coin_balance",
+    ],
+    device: ["device_redeemed_intro_subscription", "device_redeemed_intro_coin"],
+  },
+  { id: "active", title: "活跃度行为", tags: ["last_active_at"] },
+  { id: "consume", title: "内容消费行为", tags: ["watch_duration", "pay_amount"] },
+  { id: "risk", title: "风险与异常", tags: ["account_status", "age_verify_status"] },
+];
+
+function tagPanelOpen(id) {
+  const panels = segmentState.tagPanels || {};
+  return Boolean(panels[id]);
+}
+
+function renderInlineTag(pack, tagId, surface) {
+  const tag = tagById(tagId);
+  if (!tag) return "";
+  const index = (pack.includes || []).findIndex((row) => condTagId(row) === tagId);
+  const excluded = (pack.excludes || []).some((row) => condTagId(row) === tagId);
+  const on = index >= 0;
+  const fields = excluded
+    ? `<span class="field-hint">这个标签已在排除条件里</span>`
+    : on
+      ? renderCondFields(tag, pack.includes[index], "includes", index, surface)
+      : `<span class="field-hint">勾选后填写这个标签</span>`;
+  return `
+    <div class="seg-inline-row">
+      <label class="seg-inline-name"><input type="checkbox" data-inline-tag="${tag.id}" ${on ? "checked" : ""} ${excluded ? "disabled" : ""} />${escapeHtml(tag.name)}</label>
+      <div class="seg-inline-fields">${fields}</div>
+    </div>
+  `;
+}
+
+function selectedGrowthScopes() {
+  const scopes = Array.isArray(segmentState.growthScopes) ? segmentState.growthScopes : ["account", "device"];
+  return ["account", "device"].filter((id) => scopes.includes(id));
+}
+
+function renderGrowthDimension(pack, group) {
+  const scopes = selectedGrowthScopes();
+  const open = Boolean(segmentState.growthScopeOpen);
+  const labels = { account: "账号维度", device: "设备维度" };
+  const summary = scopes.length ? scopes.map((id) => labels[id]).join("、") : "请选择圈选维度";
+  const options = ["account", "device"]
+    .map(
+      (id) => `
+        <label class="seg-scope-option">
+          <input type="checkbox" data-growth-scope="${id}" ${scopes.includes(id) ? "checked" : ""} />
+          ${labels[id]}
+        </label>`,
+    )
+    .join("");
+  const hidden = ["account", "device"]
+    .filter((id) => !scopes.includes(id))
+    .map((id) => {
+      const count = group[id].filter((tagId) => (pack.includes || []).some((row) => condTagId(row) === tagId)).length;
+      return count ? `<p class="filter-hint">${labels[id]}还有 ${count} 个已选标签，勾选该维度后可查看</p>` : "";
+    })
+    .join("");
+  return `
+    <div class="seg-inline-row is-top">
+      <div class="seg-inline-name">圈选维度</div>
+      <div class="seg-inline-fields seg-stack">
+        <div class="seg-scope${open ? " open" : ""}">
+          <button type="button" class="input seg-scope-trigger${scopes.length ? "" : " is-empty"}" data-act="toggle-growth-scope">${escapeHtml(summary)}</button>
+          <div class="seg-scope-menu">${options}</div>
+        </div>
+        ${hidden}
+      </div>
+    </div>
+  `;
+}
+
+function renderGrowthRows(pack, surface, group) {
+  const labels = { account: "账号维度", device: "设备维度" };
+  return selectedGrowthScopes()
+    .map((scope) => {
+      const rows = group[scope].map((id) => renderInlineTag(pack, id, surface)).join("");
+      return `<div class="seg-scope-block"><div class="seg-scope-title">${labels[scope]}</div>${rows}</div>`;
+    })
+    .join("");
+}
+
+function renderInlineTagGroups(pack, surface) {
+  return TAG_PAGE_GROUPS.map((group) => {
+    const open = tagPanelOpen(group.id);
+    const rows = open ? (group.id === "growth" ? renderGrowthRows(pack, surface, group) : group.tags.map((id) => renderInlineTag(pack, id, surface)).join("")) : "";
+    const dimension = group.id === "growth" && open ? renderGrowthDimension(pack, group) : "";
+    const basics = group.id === "base" && open ? renderCountryField(pack) + renderDeviceField(pack) : "";
+    return `
+      <section class="seg-panel${open ? " open" : ""}">
+        <button type="button" class="seg-panel-head" data-act="toggle-tag-panel" data-id="${group.id}">
+          <span>${group.title}</span>
+          <i>${open ? "⌃" : "⌄"}</i>
+        </button>
+        ${open ? `<div class="seg-panel-body">${basics}${dimension}${rows}</div>` : ""}
+      </section>
+    `;
+  }).join("");
+}
+
 function renderPackSections(pack, surface) {
   ensurePackExtras(pack);
-  const est = pack.estimate || { include: 0, afterExclude: 0, total: 0 };
   const templatePick = surface === "create" ? pack.templatePick || "" : segmentState.templatePick;
+  const excludeRows = pack.excludes.map((id, index) => renderTagRow("excludes", id, index, surface)).join("");
   return `
-    <section class="form-sec">
-      <h4>1. 包信息</h4>
+    <section class="seg-filter-card">
       <div class="form-grid">
         <label class="span-2">人群包名称 *
           <input class="input" data-pack="name" value="${escapeHtml(pack.name)}" placeholder="例如：未付费新人" />
@@ -793,11 +918,7 @@ function renderPackSections(pack, surface) {
           <textarea class="input" rows="2" data-pack="desc" placeholder="这个人群包用来圈选谁">${escapeHtml(pack.desc)}</textarea>
         </label>
       </div>
-    </section>
-    <section class="form-sec">
-      <h4>2. 圈选条件</h4>
-      <p class="filter-hint">标签不是必填。只选当次请求地区或用户设备也可以保存。天数、秒数、金额和窗口在标签块里填。套用模板会覆盖当前标签条件，并写入合规否决：年龄验证为通过、账号状态为正常。当次请求地区可售始终生效。</p>
-      <div class="cond-params">
+      <div class="seg-template">
         <select class="input" data-template-pick>
           <option value="">选择圈选模板</option>
           ${listSegmentTemplates()
@@ -806,30 +927,19 @@ function renderPackSections(pack, surface) {
         </select>
         <button type="button" class="btn" data-act="apply-template">套用模板</button>
       </div>
-      <div class="label">包含区</div>
+      <div class="seg-block-label">行为标签圈选</div>
       <div class="radios">
-        <label><input type="radio" name="includeMode-${surface}" data-pack="includeMode" value="or" ${pack.includeMode === "or" ? "checked" : ""} /> 满足任意（OR）</label>
-        <label><input type="radio" name="includeMode-${surface}" data-pack="includeMode" value="and" ${pack.includeMode === "and" ? "checked" : ""} /> 同时满足（AND）</label>
+        <label><input type="radio" name="includeMode-${surface}" data-pack="includeMode" value="or" ${pack.includeMode === "or" ? "checked" : ""} /> 满足任意</label>
+        <label><input type="radio" name="includeMode-${surface}" data-pack="includeMode" value="and" ${pack.includeMode === "and" ? "checked" : ""} /> 同时满足</label>
       </div>
-      ${pack.includes.map((id, index) => renderTagRow("includes", id, index, surface)).join("") || '<div class="empty-inline">还没有标签。可以不选标签，只靠地区或设备圈人。</div>'}
-      <button type="button" class="btn" data-act="add-cond" data-kind="includes">添加标签</button>
-      ${renderCountryField(pack)}
-      ${renderDeviceField(pack)}
-      <div class="label" style="margin-top:16px">排除区</div>
+      <p class="filter-hint">按分类直接勾选。未勾选的标签不进入这个人群包。</p>
+      <div class="seg-panels">${renderInlineTagGroups(pack, surface)}</div>
+      <div class="seg-block-label">排除条件</div>
       <p class="filter-hint">命中排除中任一标签的用户不进包</p>
-      ${pack.excludes.map((id, index) => renderTagRow("excludes", id, index, surface)).join("") || '<div class="empty-inline">无排除标签</div>'}
-      <button type="button" class="btn" data-act="add-cond" data-kind="excludes">添加排除标签</button>
-    </section>
-    <section class="form-sec">
-      <h4>3. 预估</h4>
-      <div class="estimate-bar">
-        <div class="metric on">
-          <div class="muted">符合条件用户数</div>
-          <b>${est.total.toLocaleString()}</b>
-        </div>
-        <button type="button" class="btn" data-act="refresh-est">刷新预估</button>
-        <button type="button" class="btn btn-primary" data-act="download-users">用户列表下载</button>
+      <div class="seg-filter-list">
+        ${excludeRows || '<div class="empty-inline">无排除标签</div>'}
       </div>
+      <button type="button" class="seg-add" data-act="add-cond" data-kind="excludes">+ 添加排除标签</button>
     </section>
   `;
 }
@@ -954,6 +1064,10 @@ function openPackEditor(id) {
   segmentState.countryOpen = false;
   segmentState.detailPackId = null;
   segmentState.createPack = draft;
+  segmentState.tagPanels = {};
+  segmentState.growthScopes = ["account", "device"];
+  segmentState.growthScopeOpen = false;
+  segmentState.createNameFocused = false;
   renderApp();
 }
 
@@ -962,15 +1076,23 @@ function renderCreatePackDialog() {
   if (!pack || !Array.isArray(pack.includes)) return "";
   const name = (pack.name || "").trim();
   const editing = Boolean(pack.editingId);
+  const est = pack.estimate || { include: 0, afterExclude: 0, total: 0 };
+  const detail = segmentState.estimateOpen
+    ? `<div class="seg-est-detail">
+        <span>包含区 ${Number(est.include || 0).toLocaleString()}</span>
+        <span>排除后 ${Number(est.afterExclude || 0).toLocaleString()}</span>
+        <button type="button" class="btn" data-act="refresh-est">刷新预估</button>
+        <button type="button" class="btn" data-act="download-users">用户列表下载</button>
+      </div>`
+    : "";
   return `
     <div class="mask">
-      <div class="dialog create-pack-dialog" data-pack-surface="create">
+      <div class="dialog create-pack-dialog seg-create" data-pack-surface="create">
         <div class="dialog-title">
-          <span>${editing ? "编辑人群包" : "新建人群包"}</span>
+          <span>${editing ? "编辑分群 · 设定筛选条件" : "创建分群 · 设定筛选条件"}</span>
           <button type="button" class="btn" data-act="open-pack-guide">新手必读</button>
         </div>
         <div class="dialog-body create-pack-form">
-          <p class="filter-hint">${editing ? "保存后更新这条人群包。取消不保留本次修改。" : "保存后才会出现在列表。取消或关闭不会留下草稿。"}</p>
           <label class="enable-switch ${pack.enabled ? "on" : ""}">
             <input type="checkbox" data-pack="enabled" ${pack.enabled ? "checked" : ""} />
             <span class="enable-track"></span>
@@ -978,10 +1100,18 @@ function renderCreatePackDialog() {
           </label>
           ${renderPackSections(pack, "create")}
         </div>
-        <div class="dialog-foot">
-          <button type="button" class="btn" data-act="close-create-pack">取消</button>
-          <button type="button" class="btn btn-primary" data-act="confirm-create-pack" ${name ? "" : "disabled"}>保存</button>
+        <div class="seg-est-foot">
+          <div class="seg-est-num">
+            <b>${Number(est.total || 0).toLocaleString()}</b>
+            <span>预估人群规模</span>
+          </div>
+          <div class="seg-est-actions">
+            <button type="button" class="btn" data-act="toggle-est-detail">${segmentState.estimateOpen ? "收起明细" : "查看明细"}</button>
+            <button type="button" class="btn" data-act="close-create-pack">取消</button>
+            <button type="button" class="btn seg-save" data-act="confirm-create-pack" ${name ? "" : "disabled"}>${editing ? "保存修改" : "保存为新分群"}</button>
+          </div>
         </div>
+        ${detail}
       </div>
     </div>
   `;
@@ -1044,6 +1174,7 @@ function commitCreatePack() {
     segmentState.packDirty = false;
     segmentState.countryOpen = false;
     segmentState.countryQuery = "";
+    segmentState.estimateOpen = false;
     showToast("已保存");
     renderApp();
     return;
@@ -1072,6 +1203,7 @@ function commitCreatePack() {
     segmentState.createPack = null;
     segmentState.countryOpen = false;
     segmentState.countryQuery = "";
+    segmentState.estimateOpen = false;
     showToast("已保存");
     renderApp();
   };
@@ -1234,6 +1366,10 @@ function onAudienceClick(e) {
     segmentState.countryQuery = "";
     segmentState.countryOpen = false;
     segmentState.createPack = blankCreatePack();
+    segmentState.tagPanels = {};
+    segmentState.growthScopes = ["account", "device"];
+    segmentState.growthScopeOpen = false;
+    segmentState.createNameFocused = false;
     renderApp();
   } else if (act === "add-cond") {
     segmentState.picker = {
@@ -1376,6 +1512,36 @@ function syncCondField(el) {
 }
 
 function onAudienceChange(e) {
+  const inline = e.target.closest("[data-inline-tag]");
+  if (inline) {
+    const pack = packFromEvent(e);
+    if (!pack) return;
+    const id = inline.dataset.inlineTag;
+    const index = (pack.includes || []).findIndex((row) => condTagId(row) === id);
+    const excluded = (pack.excludes || []).some((row) => condTagId(row) === id);
+    if (inline.checked && excluded) {
+      inline.checked = false;
+      showToast("这个标签已在排除条件里", "error");
+      return;
+    }
+    if (inline.checked && index < 0) pack.includes.push(cond(id));
+    if (!inline.checked && index >= 0) pack.includes.splice(index, 1);
+    fakeEstimate(pack);
+    touchPack(pack);
+    renderApp();
+    return;
+  }
+  const growthScope = e.target.closest("[data-growth-scope]");
+  if (growthScope) {
+    const id = growthScope.dataset.growthScope === "device" ? "device" : "account";
+    const set = new Set(selectedGrowthScopes());
+    if (growthScope.checked) set.add(id);
+    else set.delete(id);
+    segmentState.growthScopes = ["account", "device"].filter((item) => set.has(item));
+    segmentState.growthScopeOpen = true;
+    renderApp();
+    return;
+  }
   const device = e.target.closest("[data-device]");
   if (device) {
     const pack = packFromEvent(e);
@@ -1495,6 +1661,14 @@ function onAudienceInput(e) {
 }
 
 function onOverlayClick(e) {
+  if (segmentState.growthScopeOpen && !e.target.closest(".seg-scope")) {
+    segmentState.growthScopeOpen = false;
+    const willRerender = Boolean(e.target.closest("[data-act], [data-inline-tag], [data-device], [data-cond], [data-pack]"));
+    if (!willRerender) {
+      renderApp();
+      return;
+    }
+  }
   const btn = e.target.closest("[data-act]");
   const mask = e.target.classList && e.target.classList.contains("mask") ? e.target : null;
   if (mask && !e.target.closest(".drawer, .dialog")) {
@@ -1532,6 +1706,19 @@ function onOverlayClick(e) {
   }
   if (!btn) return;
   const act = btn.dataset.act;
+  if (act === "toggle-growth-scope") {
+    segmentState.growthScopeOpen = !segmentState.growthScopeOpen;
+    renderApp();
+    return;
+  }
+  if (act === "toggle-tag-panel") {
+    const id = btn.dataset.id;
+    const panels = Object.assign({}, segmentState.tagPanels);
+    panels[id] = !panels[id];
+    segmentState.tagPanels = panels;
+    renderApp();
+    return;
+  }
   const createEditorActs = [
     "add-cond",
     "open-picker",
@@ -1583,6 +1770,11 @@ function onOverlayClick(e) {
   if (act === "close-create-pack") {
     segmentState.createPack = null;
     segmentState.packGuide = false;
+    segmentState.estimateOpen = false;
+    renderApp();
+  }
+  if (act === "toggle-est-detail") {
+    segmentState.estimateOpen = !segmentState.estimateOpen;
     renderApp();
   }
   if (act === "confirm-create-pack") commitCreatePack();
@@ -1649,6 +1841,8 @@ function closeOverlays() {
 
 function bindOverlays() {
   const overlay = document.getElementById("overlay-root");
+  const previousForm = overlay.querySelector(".create-pack-form");
+  const formScroll = previousForm ? previousForm.scrollTop : 0;
   overlay.innerHTML =
     renderTagDrawer() +
     renderRefsDrawer() +
@@ -1721,13 +1915,18 @@ function bindOverlays() {
   });
   const createName = overlay.querySelector("[data-pack-surface='create'] [data-pack='name']");
   const createForm = segmentState.createPack;
-  if (
+  const nextForm = overlay.querySelector(".create-pack-form");
+  const focusName =
     createName &&
     createForm &&
     !segmentState.packGuide &&
-    !(createForm.name || createForm.desc || createForm.enabled || (createForm.includes && createForm.includes.length))
-  ) {
+    !segmentState.createNameFocused &&
+    !(createForm.name || createForm.desc || createForm.enabled || (createForm.includes && createForm.includes.length));
+  if (focusName) {
+    segmentState.createNameFocused = true;
     createName.focus();
+  } else if (nextForm) {
+    nextForm.scrollTop = formScroll;
   }
   const pickerInput = overlay.querySelector("[data-picker-q]");
   if (pickerInput) {
